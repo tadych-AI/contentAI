@@ -1,0 +1,54 @@
+/* Style ekranów ContentAI (katalog, produkty) – uzupełnienie styles.css */
+p.lead { flex: none; min-width: 0; margin: 0 0 18px; }
+ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+
+.status-row { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: baseline; }
+.status-row .stat strong { font-variant-numeric: tabular-nums; }
+.status-row .btn { margin-top: 0; }
+.progress-line { font-size: 14px; color: var(--action); margin: 10px 0 0; }
+
+.filter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
+.filter-grid .span-2 { grid-column: 1 / -1; }
+.filter-grid select { width: 100%; margin-top: 6px; padding: 10px 12px; }
+.filter-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 18px; }
+.filter-actions .btn { margin-top: 0; }
+.field-help { display: block; font-size: 12.5px; font-weight: 400; color: var(--ink-soft); margin-top: 4px; }
+
+.picker { position: relative; }
+.picker-list { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; max-height: 260px; overflow: auto; margin: 4px 0 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-s); }
+.picker-list button { display: block; width: 100%; text-align: left; font: inherit; font-size: 14px; background: none; border: 0; padding: 6px 8px; border-radius: 4px; cursor: pointer; color: var(--ink); }
+.picker-list button:hover, .picker-list button:focus-visible { background: var(--stone); }
+.picker-list .muted { padding: 6px 8px; font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; background: #E3EBF7; color: var(--action); border-radius: 999px; padding: 3px 4px 3px 10px; }
+.chip button { font: inherit; line-height: 1; background: none; border: 0; color: inherit; cursor: pointer; padding: 2px 6px; border-radius: 999px; }
+.chip button:hover { background: rgba(30, 77, 155, .14); }
+
+.result-head { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.result-head .btn { margin-top: 0; }
+.pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; margin-top: 12px; font-size: 14px; }
+.pager button { font: inherit; font-size: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 4px 10px; cursor: pointer; }
+.pager button:disabled { opacity: .4; cursor: default; }
+td.check, th.check { width: 28px; }
+td.check input, th.check input { width: auto; margin: 0; }
+td.name { min-width: 280px; }
+td.path { color: var(--ink-soft); font-size: 13px; max-width: 260px; }
+tr.in-app td { background: #F3F7F1; }
+.tag.info { background: #E3EBF7; color: var(--action); }
+
+.import-bar { position: sticky; bottom: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 14px 20px; margin-top: 12px; }
+.import-bar .btn { margin-top: 0; }
+.import-result ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; }
+
+.detail { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 22px; padding: 8px 0 14px; }
+.detail h3 { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
+.detail .desc { font-size: 14px; white-space: pre-line; max-height: 340px; overflow: auto; background: var(--stone); border-radius: var(--radius-s); padding: 12px 14px; }
+.thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.thumbs img { width: 72px; height: 72px; object-fit: contain; background: #fff; border: 1px solid var(--line); border-radius: 4px; }
+table.kv td { padding: 5px 10px 5px 0; vertical-align: top; }
+table.kv td:first-child { color: var(--ink-soft); width: 45%; }
+tr.detail-row > td { background: #FAFBFA; }
+button.row-toggle { font: inherit; background: none; border: 0; padding: 0; cursor: pointer; color: var(--action); text-align: left; }
+button.row-toggle:hover { text-decoration: underline; }
+
+@media (max-width: 900px) { .filter-grid, .detail { grid-template-columns: 1fr; } }
