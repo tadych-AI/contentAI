@@ -1,0 +1,1902 @@
+{
+  "name": "ContentAI – zadania v1",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "contentai-zadania",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://tadych-ai.github.io"
+        }
+      },
+      "id": "3cac5293-dcb7-5e8c-b741-37210513c5fa",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        400
+      ],
+      "webhookId": "27aea6e2-212e-5fa1-8c60-ecd9a418f0d0"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===== KONFIGURACJA – ContentAI (Tadych) =====\nconst SUPABASE_URL = 'https://nyivgmimhwlhavdkgnzg.supabase.co';\nconst BASELINKER_INVENTORY_ID = 0;   // WSTAW: ID katalogu Baselinkera (Produkty → Katalogi → ID)\nconst ALLOWED_TYPES = ['ping', 'bl_catalog_list', 'bl_catalog_enrich', 'bl_import'];\n// zadania dostępne tylko dla wybranych ról (pozostałe: każdy zalogowany)\nconst ROLES = { bl_catalog_list: ['akceptujacy', 'admin'], bl_catalog_enrich: ['akceptujacy', 'admin'] };\n\nconst req = $input.first().json;\nconst auth = req.headers?.authorization || '';\nconst jobId = String(req.body?.job_id || '');\nconst uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nlet reason = null;\nif (!SUPABASE_URL.startsWith('https://')) reason = 'n8n: brak SUPABASE_URL w node KONFIGURACJA';\nelse if (!auth.startsWith('Bearer ')) reason = 'Brak tokenu użytkownika';\nelse if (!uuidRe.test(jobId)) reason = 'Nieprawidłowe ID zadania';\nreturn [{ json: { ok: !reason, reason, supabase_url: SUPABASE_URL.replace(/\\/$/, ''), inventory_id: BASELINKER_INVENTORY_ID, allowed_types: ALLOWED_TYPES, roles: ROLES, job_id: jobId, auth } }];\n"
+      },
+      "id": "76235aab-9235-5985-8829-99f8295b379e",
+      "name": "KONFIGURACJA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "05664a45-7c60-5d88-8ee8-db007d69b647",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "503de37e-f759-5e6c-8180-8424cf5d330a",
+      "name": "Dane OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        440,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: $json.reason }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "f7cc92ae-2cdf-5631-acbb-d1d7fe3e473c",
+      "name": "Odpowiedz 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('KONFIGURACJA').first().json.supabase_url }}/auth/v1/user",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('KONFIGURACJA').first().json.auth }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0d020676-4efd-5b8b-9756-6c3f33f342ec",
+      "name": "Sprawdź użytkownika",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        320
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase apikey (secret)"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: 'Sesja wygasła albo token jest nieprawidłowy. Zaloguj się ponownie.' }) }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "76b429a9-251e-5b4c-a3bb-6db4781c4051",
+      "name": "Odpowiedz 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('KONFIGURACJA').first().json.supabase_url }}/rest/v1/jobs?id=eq.{{ $('KONFIGURACJA').first().json.job_id }}&select=*",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "2e09967e-f39a-547a-9d5b-24dfdfd7190e",
+      "name": "Pobierz zadanie",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase apikey (secret)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $('KONFIGURACJA').first().json.supabase_url }}/rest/v1/profiles?id=eq.{{ $('Sprawdź użytkownika').first().json.id }}&select=role",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "ffd2bfea-f498-5754-aed3-539735f16f29",
+      "name": "Pobierz rolę",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase apikey (secret)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Zadanie istnieje, należy do zalogowanego, czeka w kolejce, ma znany typ, a użytkownik ma do niego rolę\nconst rowsOf = items => items.flatMap(i => Array.isArray(i.json) ? i.json : (i.json && Object.keys(i.json).length ? [i.json] : []));\nconst cfg = $('KONFIGURACJA').first().json;\nconst user = $('Sprawdź użytkownika').first().json;\nconst job = rowsOf($('Pobierz zadanie').all())[0] || null;\nconst role = (rowsOf($input.all())[0] || {}).role || null;\nlet reason = null;\nif (!job) reason = 'Zadanie nie istnieje';\nelse if (job.created_by !== user.id) reason = 'Zadanie należy do innego użytkownika';\nelse if (job.status !== 'w_kolejce') reason = `Zadanie ma status \"${job.status}\", a nie \"w_kolejce\"`;\nelse if (!cfg.allowed_types.includes(job.job_type)) reason = `Nieobsługiwany typ zadania: ${job.job_type}`;\nelse if (cfg.roles[job.job_type] && !cfg.roles[job.job_type].includes(role)) reason = 'To zadanie może uruchomić akceptujący lub admin';\nelse if (job.job_type.startsWith('bl_') && !cfg.inventory_id) reason = 'n8n: brak BASELINKER_INVENTORY_ID w node KONFIGURACJA';\nreturn [{ json: { ok: !reason, reason, job, user_id: user.id, user_email: user.email, role } }];\n"
+      },
+      "id": "c49bc271-5186-5d92-a281-549a3750ae1b",
+      "name": "Sprawdź zadanie",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "aefb6a1d-6c50-5c93-a9a3-42ba26e91ceb",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5abc40aa-69b6-5fb6-ade9-129a8aa7a2c9",
+      "name": "Zadanie OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: $json.reason }) }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "59579da9-688b-5058-8716-a51bb71ca231",
+      "name": "Odpowiedz 409",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, job_id: $json.job.id }) }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "id": "6024c151-726f-525b-b5b9-71b91b99490c",
+      "name": "Odpowiedz 202",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('KONFIGURACJA').first().json.supabase_url }}/rest/v1/jobs?id=eq.{{ $('KONFIGURACJA').first().json.job_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "PATCH",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'w_toku' }) }}",
+        "options": {}
+      },
+      "id": "fdd0a513-5323-56fe-bb9b-db49d382dd88",
+      "name": "Status: w toku",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        220
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase apikey (secret)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "13be3b58-9336-579d-b620-4e9cbc2cf20b",
+              "leftValue": "={{ $('Sprawdź zadanie').first().json.job.job_type === 'ping' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "268cc60b-b00b-5d29-b0a4-dba8cd38b211",
+      "name": "Typ: ping?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Zadanie testowe: potwierdza pełny obieg aplikacja → n8n → baza\nconst c = $('Sprawdź zadanie').first().json;\nreturn [{ json: { result: { message: 'n8n odebrał zadanie i zapisał wynik w bazie', user_email: c.user_email, role: c.role, n8n_time: new Date().toISOString(), execution_id: $execution.id } } }];\n"
+      },
+      "id": "d32dc4c9-5af4-58b8-9400-20ec69040e79",
+      "name": "Wykonaj: ping",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "116db79a-ded0-560e-94d0-7b8d2bed935b",
+              "leftValue": "={{ $('Sprawdź zadanie').first().json.job.job_type === 'bl_catalog_list' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "622c1146-d920-55d4-9fc7-4dfe60db37a5",
+      "name": "Typ: lista katalogu?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "bd03fbbf-bd0d-5045-9d5c-052f4ccd517e",
+              "leftValue": "={{ $('Sprawdź zadanie').first().json.job.job_type === 'bl_catalog_enrich' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "02a1e4be-bb23-5970-b1c3-3323db4c1dd8",
+      "name": "Typ: uzupełnienie indeksu?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('KONFIGURACJA').first().json.supabase_url }}/rest/v1/jobs?id=eq.{{ $('KONFIGURACJA').first().json.job_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "PATCH",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'gotowe', result: $json.result }) }}",
+        "options": {}
+      },
+      "id": "9579cfc8-6bcd-5cec-852d-d9d1f9993aea",
+      "name": "Status: gotowe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5600,
+        100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase apikey (secret)"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('KONFIGURACJA').first().json.supabase_url }}/rest/v1/jobs?id=eq.{{ $('KONFIGURACJA').first().json.job_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "PATCH",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'blad', error: String($json.error?.message || $json.error || $json.message || 'nieznany błąd').slice(0, 1000) }) }}",
+        "options": {}
+      },
+      "id": "ef04c065-487a-55f9-9b43-785fd8cd1e7c",
+      "name": "Status: błąd",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5600,
+        560
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase apikey (secret)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Nowy przebieg synchronizacji indeksu: ID przebiegu (batch_id) + parametry dla BL\nconst cfg = $('KONFIGURACJA').first().json;\nconst hex = n => Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');\nconst batch_id = `${hex(8)}-${hex(4)}-4${hex(3)}-${'89ab'[Math.floor(Math.random() * 4)]}${hex(3)}-${hex(12)}`;\nreturn [{ json: { batch_id, parameters: JSON.stringify({ inventory_id: cfg.inventory_id }) } }];\n"
+      },
+      "id": "ec0d6ef8-4d41-5934-ab53-01c47581a221",
+      "name": "CL: start",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        340
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://api.baselinker.com/connector.php",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "method",
+              "value": "getInventoryCategories"
+            },
+            {
+              "name": "parameters",
+              "value": "={{ $json.parameters }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "7c0ce05d-6006-5c91-8ed6-d8c5d8038f54",
+      "name": "BL: kategorie",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        340
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BASELINKER_CRED_ID",
+          "name": "Baselinker X-BLToken"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://api.baselinker.com/connector.php",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "method",
+              "value": "getInventoryManufacturers"
+            },
+            {
+              "name": "parameters",
+              "value": "{}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "f10f7c5c-9294-52aa-a48b-9fd87df20fee",
+      "name": "BL: producenci",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3080,
+        340
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BASELINKER_CRED_ID",
+          "name": "Baselinker X-BLToken"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lista katalogu: strony po 1000 produktów (z wariantami). Puste strony na końcu są pomijane przy zbieraniu.\nconst cfg = $('KONFIGURACJA').first().json;\nconst p = $('Sprawdź zadanie').first().json.job.payload || {};\nconst n = Math.min(Math.max(Number(p.max_pages) || 40, 1), 100);\nreturn Array.from({ length: n }, (_, i) => ({ json: { page: i + 1, parameters: JSON.stringify({ inventory_id: cfg.inventory_id, page: i + 1, include_variants: true }) } }));\n"
+      },
+      "id": "b6dcf38f-d914-5f50-baea-918d9f6ecc7d",
+      "name": "CL: strony",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        340
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://api.baselinker.com/connector.php",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "method",
+              "value": "getInventoryProductsList"
+            },
+            {
+              "name": "parameters",
+              "value": "={{ $json.parameters }}"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 700
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "aa728a57-3d8c-5911-9a3d-785fbdbe02b4",
+      "name": "BL: lista produktów",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3520,
+        340
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BASELINKER_CRED_ID",
+          "name": "Baselinker X-BLToken"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Kategorie + producenci + lista produktów → wiersze do zapisu (paczki po 2000)\nfunction blJson(raw) {\n  let r = raw;\n  if (r && typeof r.data === 'string') { try { r = JSON.parse(r.data); } catch (e) {} }\n  if (typeof r === 'string') { try { r = JSON.parse(r); } catch (e) {} }\n  return r || {};\n}\nconst start = $('CL: start').first().json;\nconst now = new Date().toISOString();\nconst warnings = [];\nconst bad = r => r.status !== 'SUCCESS';\nconst errText = r => r.error_message ? `${r.error_message} (${r.error_code || 'brak kodu'})` : 'nieoczekiwana odpowiedź: ' + JSON.stringify(r).slice(0, 200);\n\nconst cr = blJson($('BL: kategorie').first().json);\nif (bad(cr)) throw new Error('Baselinker – kategorie: ' + errText(cr));\nconst mr = blJson($('BL: producenci').first().json);\nif (bad(mr)) throw new Error('Baselinker – producenci: ' + errText(mr));\n\nconst cats = (cr.categories || []).map(c => ({ id: Number(c.category_id), name: String(c.name || '').trim(), parent: Number(c.parent_id) || 0 })).filter(c => c.id);\nconst byId = new Map(cats.map(c => [c.id, c]));\nconst pathOf = c => { const parts = []; const seen = new Set(); let x = c; while (x && !seen.has(x.id)) { seen.add(x.id); parts.unshift(x.name); x = byId.get(x.parent); } return parts.join(' > '); };\nconst catRows = cats.map(c => ({ bl_category_id: c.id, name: c.name, parent_id: c.parent || null, path: pathOf(c), synced_at: now }));\n\nconst manRows = (mr.manufacturers || []).map(m => ({ bl_manufacturer_id: Number(m.manufacturer_id), name: String(m.name || m.manufacturer_name || '').trim(), synced_at: now })).filter(m => m.bl_manufacturer_id && m.name);\nif (manRows.length >= 10000) warnings.push('Baselinker zwrócił 10 000 producentów – możliwe, że nie wszystkich.');\n\n// lista: każda strona musi się udać, inaczej indeks byłby niepełny (i usunęlibyśmy istniejące wiersze)\nconst pages = $input.all().map(i => blJson(i.json));\nconst failed = pages.find(bad);\nif (failed) throw new Error('Baselinker – lista produktów: ' + errText(failed));\nconst seen = new Set(), rows = [];\nlet lastLen = 0;\nfor (const r of pages) {\n  const list = Object.entries(r.products || {});\n  if (list.length) lastLen = list.length;\n  for (const [id, x] of list) {\n    const bl = Number(x.id || id);\n    if (!bl || seen.has(bl)) continue;\n    seen.add(bl);\n    rows.push({ bl_id: bl, parent_id: Number(x.parent_id) || null, sku: String(x.sku || '').trim() || null, ean: String(x.ean || '').trim() || null, name: String(x.name || '').trim().slice(0, 500), batch_id: start.batch_id, synced_at: now });\n  }\n}\nif (!rows.length) throw new Error('Baselinker nie zwrócił żadnych produktów – sprawdź BASELINKER_INVENTORY_ID');\nconst fullPages = pages.filter(r => Object.keys(r.products || {}).length >= 1000).length;\nconst truncated = fullPages >= pages.length;\nif (truncated) warnings.push(`Pobrano ${pages.length} pełnych stron – katalog może być większy. Zwiększ max_pages; nieaktualnych produktów nie usunięto.`);\n\nconst out = [];\nif (catRows.length) out.push({ json: { table: 'bl_categories', conflict: 'bl_category_id', rows: catRows } });\nif (manRows.length) out.push({ json: { table: 'bl_manufacturers', conflict: 'bl_manufacturer_id', rows: manRows } });\nfor (let i = 0; i < rows.length; i += 2000) out.push({ json: { table: 'bl_catalog', conflict: 'bl_id', rows: rows.slice(i, i + 2000) } });\nout[0].json.summary = { batch_id: start.batch_id, count: rows.length, categories: catRows.length, manufacturers: manRows.length, truncated, warnings };\nreturn out;\n"
+      },
+      "id": "7ee5793a-4d2a-5eeb-9d09-19855c190ecb",
+      "name": "CL: zbierz",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3740,
+        340
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('KONFIGURACJA').first().json.supabase_url }}/rest/v1/{{ $json.table }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "on_conflict",
+              "value": "={{ $json.conflict }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.rows) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 200
+            }
+          }
+        }
+      },
+      "id": "1563781b-d7ca-5294-bf1f-72365b3ad2f4",
+      "name": "SB: zapisz indeks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3960,
+        340
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase apikey (secret)"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Wszystkie paczki zapisane? Dopiero wtedy wolno usunąć z indeksu produkty, których nie ma już w BL.\nconst expected = $('CL: zbierz').all().length;\nconst got = $input.all().length;\nif (got !== expected) throw new Error(`Zapis indeksu niepełny (${got} z ${expected} paczek) – nic nie usunięto, uruchom ponownie`);\nconst s = $('CL: zbierz').first().json.summary;\nreturn [{ json: { batch_id: s.batch_id, skip_delete: !!s.truncated } }];\n"
+      },
+      "id": "c872087b-bd86-521c-a5bb-d15942cb94b3",
+      "name": "CL: kontrola",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4180,
+        340
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('KONFIGURACJA').first().json.supabase_url }}/rest/v1/bl_catalog",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "DELETE",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "batch_id",
+              "value": "=neq.{{ $json.batch_id }}"
+            },
+            {
+              "name": "bl_id",
+              "value": "={{ $json.skip_delete ? 'eq.-1' : 'gt.0' }}"
+            },
+            {
+              "name": "select",
+              "value": "bl_id"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "de157f49-ec75-5dda-adc5-fa45fce3e8a4",
+      "name": "SB: usuń nieaktualne",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4400,
+        340
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase apikey (secret)"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('CL: zbierz').first().json.summary;\nconst removed = $input.all().filter(i => i.json && i.json.bl_id).length;\nreturn [{ json: { result: { batch_id: s.batch_id, count: s.count, categories: s.categories, manufacturers: s.manufacturers, removed, truncated: s.truncated, warnings: s.warnings } } }];\n"
+      },
+      "id": "0a20ab89-f9fc-5894-be3f-5b0f0fc5df03",
+      "name": "CL: wynik",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4620,
+        340
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dociągnięcie kategorii i producenta: ID z aplikacji → paczki po 100 dla getInventoryProductsData\nconst cfg = $('KONFIGURACJA').first().json;\nconst p = $('Sprawdź zadanie').first().json.job.payload || {};\nconst ids = [...new Set((Array.isArray(p.ids) ? p.ids : []).map(Number).filter(n => Number.isInteger(n) && n > 0))];\nif (!ids.length) throw new Error('Brak ID produktów do uzupełnienia');\nif (ids.length > 1000) throw new Error('Maksymalnie 1000 ID w jednym zadaniu');\nif (!/^[0-9a-f-]{36}$/i.test(String(p.batch_id || ''))) throw new Error('Brak batch_id przebiegu indeksu');\nconst out = [];\nfor (let i = 0; i < ids.length; i += 100) out.push({ json: { parameters: JSON.stringify({ inventory_id: cfg.inventory_id, products: ids.slice(i, i + 100) }) } });\nreturn out;\n"
+      },
+      "id": "64a36852-1c23-5306-96d4-7ef0771b1e33",
+      "name": "EN: paczki",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        760
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://api.baselinker.com/connector.php",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "method",
+              "value": "getInventoryProductsData"
+            },
+            {
+              "name": "parameters",
+              "value": "={{ $json.parameters }}"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 700
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "6fbcbd44-39f0-5b77-837e-d840670331ef",
+      "name": "BL: dane (indeks)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3080,
+        760
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BASELINKER_CRED_ID",
+          "name": "Baselinker X-BLToken"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Odpowiedzi BL → kategoria, producent, bundle, tagi, produkt nadrzędny (pozostałe kolumny indeksu bez zmian)\nfunction blJson(raw) {\n  let r = raw;\n  if (r && typeof r.data === 'string') { try { r = JSON.parse(r.data); } catch (e) {} }\n  if (typeof r === 'string') { try { r = JSON.parse(r); } catch (e) {} }\n  return r || {};\n}\nconst p = $('Sprawdź zadanie').first().json.job.payload || {};\nconst now = new Date().toISOString();\nconst rows = [];\nfor (const it of $input.all()) {\n  const r = blJson(it.json);\n  if (r.status !== 'SUCCESS') throw new Error('Baselinker: ' + (r.error_message ? `${r.error_message} (${r.error_code || 'brak kodu'})` : 'nieoczekiwana odpowiedź: ' + JSON.stringify(r).slice(0, 200)));\n  for (const [id, x] of Object.entries(r.products || {})) {\n    rows.push({ bl_id: Number(id), batch_id: p.batch_id, parent_id: Number(x.parent_id) || null, bl_category_id: Number(x.category_id) || null, bl_manufacturer_id: Number(x.manufacturer_id) || null,\n      is_bundle: !!x.is_bundle, tags: Array.isArray(x.tags) ? x.tags.map(String) : [], enriched_at: now });\n  }\n}\nconst asked = new Set((p.ids || []).map(Number));\nconst missing = [...asked].filter(id => !rows.some(r => r.bl_id === id));\nreturn [{ json: { rows: rows.filter(r => asked.has(r.bl_id)), missing } }];\n"
+      },
+      "id": "9c3f2b21-da3e-57ce-9601-e6b0d33552e2",
+      "name": "EN: wiersze",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        760
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('KONFIGURACJA').first().json.supabase_url }}/rest/v1/bl_catalog",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "on_conflict",
+              "value": "bl_id"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.rows) }}",
+        "options": {}
+      },
+      "id": "7614abbe-0256-5c03-8649-d5a265b9f1fb",
+      "name": "SB: zapisz uzupełnienie",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3520,
+        760
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase apikey (secret)"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $('EN: wiersze').first().json;\nreturn [{ json: { result: { updated: e.rows.length, missing: e.missing.length, missing_ids: e.missing.slice(0, 50) } } }];\n"
+      },
+      "id": "6cdf2db5-7e48-59ff-a30b-7ae77365fd85",
+      "name": "EN: wynik",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3740,
+        760
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Import wybranych produktów: pełne dane z getInventoryProductsData (paczki po 100)\nconst cfg = $('KONFIGURACJA').first().json;\nconst p = $('Sprawdź zadanie').first().json.job.payload || {};\nconst ids = [...new Set((Array.isArray(p.ids) ? p.ids : []).map(Number).filter(n => Number.isInteger(n) && n > 0))];\nif (!ids.length) throw new Error('Brak produktów do importu');\nif (ids.length > 300) throw new Error('Maksymalnie 300 produktów w jednym zadaniu importu');\nconst out = [];\nfor (let i = 0; i < ids.length; i += 100) out.push({ json: { parameters: JSON.stringify({ inventory_id: cfg.inventory_id, products: ids.slice(i, i + 100) }) } });\nreturn out;\n"
+      },
+      "id": "a180fd85-5aaa-5b04-b6a4-a7a0d838827d",
+      "name": "IM: paczki",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        1060
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://api.baselinker.com/connector.php",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "method",
+              "value": "getInventoryProductsData"
+            },
+            {
+              "name": "parameters",
+              "value": "={{ $json.parameters }}"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 700
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "ee4a2622-eeb0-54c5-942c-52ac3528b846",
+      "name": "BL: dane produktów",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3080,
+        1060
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BASELINKER_CRED_ID",
+          "name": "Baselinker X-BLToken"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Odpowiedź BL → wiersze produktów (bez marki – ta po zapisie słownika marek) + uwagi do jakości danych\nfunction blJson(raw) {\n  let r = raw;\n  if (r && typeof r.data === 'string') { try { r = JSON.parse(r.data); } catch (e) {} }\n  if (typeof r === 'string') { try { r = JSON.parse(r); } catch (e) {} }\n  return r || {};\n}\nconst p = $('Sprawdź zadanie').first().json.job.payload || {};\nconst now = new Date().toISOString();\nconst asked = [...new Set((p.ids || []).map(Number))];\nconst plain = h => String(h || '').replace(/<(script|style)[^>]*>[\\s\\S]*?<\\/\\1>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\\s+/g, ' ').trim();\nconst hash = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(16).padStart(8, '0'); };\nconst featuresOf = f => {\n  if (Array.isArray(f)) f = Object.fromEntries(f.map(x => Array.isArray(x) ? [x[0], x[1]] : [x && x.name, x && x.value]));\n  return Object.fromEntries(Object.entries(f || {}).filter(([k, v]) => String(k || '').trim() && v !== null && v !== undefined && String(v).trim() !== '').map(([k, v]) => [String(k).trim(), String(v).trim()]));\n};\nconst found = {}, skipped = [], warnings = [];\nfor (const it of $input.all()) {\n  const r = blJson(it.json);\n  if (r.status !== 'SUCCESS') throw new Error('Baselinker: ' + (r.error_message ? `${r.error_message} (${r.error_code || 'brak kodu'})` : 'nieoczekiwana odpowiedź: ' + JSON.stringify(r).slice(0, 200)));\n  Object.assign(found, r.products || {});\n}\nconst rows = [];\nfor (const id of asked) {\n  const x = found[id];\n  if (!x) { skipped.push({ bl_id: id, reason: 'brak produktu w Baselinkerze (usunięty?)' }); continue; }\n  const tf = x.text_fields || {};\n  const sku = String(x.sku || '').trim();\n  const name = String(tf.name || '').trim();\n  if (!sku) { skipped.push({ bl_id: id, reason: 'produkt bez SKU' }); continue; }\n  if (!name) { skipped.push({ bl_id: id, sku, reason: 'produkt bez nazwy' }); continue; }\n  const description = String(tf.description || '');\n  const features = featuresOf(tf.features);\n  const description_extra = Object.fromEntries([1, 2, 3, 4].map(n => [`description_extra${n}`, String(tf[`description_extra${n}`] || '')]).filter(([, v]) => v.trim()));\n  const extra_fields = Object.fromEntries(Object.entries(tf).filter(([k]) => /^extra_field_\\d+$/.test(k)).map(([k, v]) => [k.replace('extra_field_', ''), v]));\n  const images = Object.entries(x.images || {}).filter(([k, v]) => /^\\d+$/.test(k) && v).sort((a, b) => Number(a[0]) - Number(b[0])).map(([k, v]) => ({ url: String(v), position: Number(k), role: null }));\n  const bundle_items = x.is_bundle ? Object.entries(x.bundle_products || {}).map(([bid, q]) => ({ bl_id: Number(bid), quantity: Number(q) || 1 })) : [];\n  const dims = { height: Number(x.height) || 0, width: Number(x.width) || 0, length: Number(x.length) || 0 };\n  const weight = x.weight === undefined || x.weight === null || x.weight === '' ? null : Number(x.weight);\n  const ean = String(x.ean || '').trim() || null;\n  const flags = [];\n  const descLen = plain(description).length;\n  if (!descLen) flags.push('Brak opisu w BL');\n  else if (descLen < 300) flags.push(`Krótki opis (${descLen} zn.)`);\n  if (!Object.keys(features).length) flags.push('Brak parametrów');\n  if (!ean) flags.push('Brak EAN');\n  if (weight === null || weight <= 0.05) flags.push(`Waga nieuzupełniona (${weight ?? 'brak'} kg)`);\n  if (!images.length) flags.push('Brak zdjęć');\n  if (!Number(x.category_id)) flags.push('Brak kategorii');\n  if (!Number(x.manufacturer_id)) flags.push('Brak producenta');\n  if (x.is_bundle && !bundle_items.length) flags.push('Zestaw bez składników');\n  rows.push({\n    baselinker_product_id: id, sku, ean, name, description_pl: description, description_extra, features, extra_fields,\n    bl_category_id: Number(x.category_id) || null, bl_parent_id: Number(x.parent_id) || null, is_bundle: !!x.is_bundle, bundle_items, images,\n    weight, dimensions: (dims.height || dims.width || dims.length) ? dims : null,\n    source_hash: hash(JSON.stringify([name, description, features, description_extra])), import_flags: flags, synced_at: now,\n    _manufacturer_id: Number(x.manufacturer_id) || null,\n  });\n}\n// duplikaty w paczce: ten sam SKU (blokowałby zapis) i ten sam EAN (marketplace odrzuci)\nconst bySku = new Map();\nconst unique = [];\nfor (const r of rows) {\n  if (bySku.has(r.sku.toLowerCase())) { skipped.push({ bl_id: r.baselinker_product_id, sku: r.sku, reason: `SKU powtarza się w BL (ID ${bySku.get(r.sku.toLowerCase())})` }); continue; }\n  bySku.set(r.sku.toLowerCase(), r.baselinker_product_id); unique.push(r);\n}\nconst byEan = {};\nunique.forEach(r => { if (r.ean) (byEan[r.ean] = byEan[r.ean] || []).push(r.sku); });\nunique.forEach(r => { const o = r.ean ? byEan[r.ean].filter(s => s !== r.sku) : []; if (o.length) r.import_flags.push(`EAN taki sam jak ${o.join(', ')}`); });\nconst man = [...new Set(unique.map(r => r._manufacturer_id).filter(Boolean))];\nconst cat = [...new Set(unique.map(r => r.bl_category_id).filter(Boolean))];\nreturn [{ json: { rows: unique, skipped, warnings, manufacturer_ids: man, category_ids: cat,\n  q_man: `(${man.length ? man.join(',') : 0})`, q_cat: `(${cat.length ? cat.join(',') : 0})`,\n  q_existing: `(baselinker_product_id.in.(${unique.map(r => r.baselinker_product_id).join(',') || 0}),sku.in.(${unique.map(r => '\"' + r.sku.replace(/[\"\\\\]/g, '') + '\"').join(',') || '\"\"'}))` } }];\n"
+      },
+      "id": "ecee752a-6d15-58b4-a9bd-9d23c84a86ef",
+      "name": "IM: produkty",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        1060
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('KONFIGURACJA').first().json.supabase_url }}/rest/v1/bl_manufacturers",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "bl_manufacturer_id",
+              "value": "=in.{{ $json.q_man }}"
+            },
+            {
+              "name": "select",
+              "value": "bl_manufacturer_id,name"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4659c362-8362-5b0a-8b88-cf2beeee82d1",
+      "name": "SB: producenci",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3520,
+        1060
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase apikey (secret)"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Producenci z BL → słownik marek aplikacji (marka = producent)\nconst rowsOf = items => items.flatMap(i => Array.isArray(i.json) ? i.json : (i.json && Object.keys(i.json).length ? [i.json] : []));\nconst mans = rowsOf($input.all()).filter(m => m.bl_manufacturer_id && m.name);\n// jedna marka na nazwę (dwóch producentów o tej samej nazwie zablokowałoby zapis)\nconst byName = new Map();\nfor (const m of mans) { const n = String(m.name).trim(); if (!byName.has(n.toLowerCase())) byName.set(n.toLowerCase(), { name: n, bl_manufacturer_id: Number(m.bl_manufacturer_id) }); }\nreturn [{ json: { rows: [...byName.values()] } }];\n"
+      },
+      "id": "ec9a8d98-f62e-5f56-9edb-52874cfd34b5",
+      "name": "IM: marki",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3740,
+        1060
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('KONFIGURACJA').first().json.supabase_url }}/rest/v1/brands",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "on_conflict",
+              "value": "name"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.rows) }}",
+        "options": {}
+      },
+      "id": "c8690da7-d00a-5a24-904d-b17d47a46d87",
+      "name": "SB: marki",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3960,
+        1060
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase apikey (secret)"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $('KONFIGURACJA').first().json.supabase_url }}/rest/v1/bl_categories",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "bl_category_id",
+              "value": "=in.{{ $('IM: produkty').first().json.q_cat }}"
+            },
+            {
+              "name": "select",
+              "value": "bl_category_id"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3fea3fae-0077-5c5b-8549-a37d5ece3d6c",
+      "name": "SB: kategorie",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4180,
+        1060
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase apikey (secret)"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $('KONFIGURACJA').first().json.supabase_url }}/rest/v1/products",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "or",
+              "value": "={{ $('IM: produkty').first().json.q_existing }}"
+            },
+            {
+              "name": "select",
+              "value": "baselinker_product_id,sku"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d7bf5444-db26-5310-9611-32f50700f690",
+      "name": "SB: istniejące",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4400,
+        1060
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase apikey (secret)"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Marka, znane kategorie, kolizje SKU z innymi produktami → wiersze do zapisu\nconst rowsOf = items => items.flatMap(i => Array.isArray(i.json) ? i.json : (i.json && Object.keys(i.json).length ? [i.json] : []));\nconst src = $('IM: produkty').first().json;\nconst brands = rowsOf($('SB: marki').all());\nconst knownCats = new Set(rowsOf($('SB: kategorie').all()).map(c => Number(c.bl_category_id)));\nconst existing = rowsOf($input.all());\nconst brandOf = new Map(brands.filter(b => b.bl_manufacturer_id).map(b => [Number(b.bl_manufacturer_id), b.id]));\nconst existingIds = new Set(existing.map(e => Number(e.baselinker_product_id)));\nconst skuOwner = new Map(existing.map(e => [String(e.sku).toLowerCase(), Number(e.baselinker_product_id)]));\nconst skipped = [...src.skipped];\nconst rows = [];\nfor (const r of src.rows) {\n  const owner = skuOwner.get(r.sku.toLowerCase());\n  if (owner && owner !== r.baselinker_product_id) { skipped.push({ bl_id: r.baselinker_product_id, sku: r.sku, reason: `SKU jest już w aplikacji przy innym produkcie BL (ID ${owner})` }); continue; }\n  const { _manufacturer_id, ...row } = r;\n  row.brand_id = _manufacturer_id ? (brandOf.get(_manufacturer_id) || null) : null;\n  if (_manufacturer_id && !row.brand_id) row.import_flags = [...row.import_flags, 'Producent spoza indeksu – odśwież indeks katalogu'];\n  if (row.bl_category_id && !knownCats.has(row.bl_category_id)) { row.import_flags = [...row.import_flags, `Kategoria ${row.bl_category_id} spoza indeksu – odśwież indeks katalogu`]; row.bl_category_id = null; }\n  rows.push(row);\n}\nconst created = rows.filter(r => !existingIds.has(r.baselinker_product_id)).length;\nreturn [{ json: { rows, skipped, created, updated: rows.length - created, warnings: src.warnings } }];\n"
+      },
+      "id": "6d1873e7-feeb-5acb-985a-53f3c1e09cb6",
+      "name": "IM: wiersze",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4620,
+        1060
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('KONFIGURACJA').first().json.supabase_url }}/rest/v1/products",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "on_conflict",
+              "value": "baselinker_product_id"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.rows) }}",
+        "options": {}
+      },
+      "id": "0fba8011-4f48-52b9-b9df-c8bdf26db367",
+      "name": "SB: zapisz produkty",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4840,
+        1060
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase apikey (secret)"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const w = $('IM: wiersze').first().json;\nreturn [{ json: { result: { imported: w.rows.length, created: w.created, updated: w.updated, skipped: w.skipped, warnings: w.warnings } } }];\n"
+      },
+      "id": "687fb6af-843f-58c6-b059-c9c5803fdaf2",
+      "name": "IM: wynik",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5060,
+        1060
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "content": "## ContentAI – zadania (Tadych)\n1. **KONFIGURACJA**: wpisz BASELINKER_INVENTORY_ID (SUPABASE_URL jest już ustawiony).\n2. Credential **Supabase apikey (secret)**: Header Auth, Name `apikey`, Value = klucz `sb_secret_…` z Supabase (Project Settings → API Keys). Klucz secret tylko tu – nigdy w aplikacji.\n3. Credential **Baselinker X-BLToken**: Header Auth, Name `X-BLToken`, Value = token API Baselinkera (etap 1: wystarczy odczyt katalogu).\n4. Przypisz oba credentiale we wszystkich węzłach HTTP (po imporcie pokażą się jako brakujące).\n5. Włącz workflow (Active) i skopiuj Production URL webhooka do zmiennej repozytorium VITE_N8N_WEBHOOK_URL.\n\nZadania: ping · bl_catalog_list (lista całego katalogu → indeks) · bl_catalog_enrich (kategoria i producent, paczki po 1000 ID) · bl_import (pełne dane wybranych produktów).",
+        "height": 360,
+        "width": 520
+      },
+      "id": "43ed3f30-380c-5279-99d7-0a64b3502547",
+      "name": "Instrukcja",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "KONFIGURACJA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KONFIGURACJA": {
+      "main": [
+        [
+          {
+            "node": "Dane OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pobierz zadanie": {
+      "main": [
+        [
+          {
+            "node": "Pobierz rolę",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pobierz rolę": {
+      "main": [
+        [
+          {
+            "node": "Sprawdź zadanie",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sprawdź zadanie": {
+      "main": [
+        [
+          {
+            "node": "Zadanie OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Odpowiedz 202": {
+      "main": [
+        [
+          {
+            "node": "Status: w toku",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: w toku": {
+      "main": [
+        [
+          {
+            "node": "Typ: ping?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wykonaj: ping": {
+      "main": [
+        [
+          {
+            "node": "Status: gotowe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dane OK?": {
+      "main": [
+        [
+          {
+            "node": "Sprawdź użytkownika",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Odpowiedz 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sprawdź użytkownika": {
+      "main": [
+        [
+          {
+            "node": "Pobierz zadanie",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Odpowiedz 401",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zadanie OK?": {
+      "main": [
+        [
+          {
+            "node": "Odpowiedz 202",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Odpowiedz 409",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Typ: ping?": {
+      "main": [
+        [
+          {
+            "node": "Wykonaj: ping",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Typ: lista katalogu?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Typ: lista katalogu?": {
+      "main": [
+        [
+          {
+            "node": "CL: start",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Typ: uzupełnienie indeksu?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Typ: uzupełnienie indeksu?": {
+      "main": [
+        [
+          {
+            "node": "EN: paczki",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IM: paczki",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: gotowe": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CL: start": {
+      "main": [
+        [
+          {
+            "node": "BL: kategorie",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BL: kategorie": {
+      "main": [
+        [
+          {
+            "node": "BL: producenci",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BL: producenci": {
+      "main": [
+        [
+          {
+            "node": "CL: strony",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CL: strony": {
+      "main": [
+        [
+          {
+            "node": "BL: lista produktów",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BL: lista produktów": {
+      "main": [
+        [
+          {
+            "node": "CL: zbierz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CL: zbierz": {
+      "main": [
+        [
+          {
+            "node": "SB: zapisz indeks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SB: zapisz indeks": {
+      "main": [
+        [
+          {
+            "node": "CL: kontrola",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CL: kontrola": {
+      "main": [
+        [
+          {
+            "node": "SB: usuń nieaktualne",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SB: usuń nieaktualne": {
+      "main": [
+        [
+          {
+            "node": "CL: wynik",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CL: wynik": {
+      "main": [
+        [
+          {
+            "node": "Status: gotowe",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EN: paczki": {
+      "main": [
+        [
+          {
+            "node": "BL: dane (indeks)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BL: dane (indeks)": {
+      "main": [
+        [
+          {
+            "node": "EN: wiersze",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EN: wiersze": {
+      "main": [
+        [
+          {
+            "node": "SB: zapisz uzupełnienie",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SB: zapisz uzupełnienie": {
+      "main": [
+        [
+          {
+            "node": "EN: wynik",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EN: wynik": {
+      "main": [
+        [
+          {
+            "node": "Status: gotowe",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IM: paczki": {
+      "main": [
+        [
+          {
+            "node": "BL: dane produktów",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BL: dane produktów": {
+      "main": [
+        [
+          {
+            "node": "IM: produkty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IM: produkty": {
+      "main": [
+        [
+          {
+            "node": "SB: producenci",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SB: producenci": {
+      "main": [
+        [
+          {
+            "node": "IM: marki",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IM: marki": {
+      "main": [
+        [
+          {
+            "node": "SB: marki",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SB: marki": {
+      "main": [
+        [
+          {
+            "node": "SB: kategorie",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SB: kategorie": {
+      "main": [
+        [
+          {
+            "node": "SB: istniejące",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SB: istniejące": {
+      "main": [
+        [
+          {
+            "node": "IM: wiersze",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IM: wiersze": {
+      "main": [
+        [
+          {
+            "node": "SB: zapisz produkty",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SB: zapisz produkty": {
+      "main": [
+        [
+          {
+            "node": "IM: wynik",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IM: wynik": {
+      "main": [
+        [
+          {
+            "node": "Status: gotowe",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}
