@@ -7,6 +7,7 @@ import Login from './pages/Login.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Catalog from './pages/Catalog.jsx'
 import Products from './pages/Products.jsx'
+import Facts from './pages/Facts.jsx'
 import Account from './pages/Account.jsx'
 import Users from './pages/Users.jsx'
 
@@ -48,6 +49,7 @@ export default function App() {
           <Route index element={<Dashboard profile={profile} />} />
           <Route path="katalog" element={<Catalog profile={profile} />} />
           <Route path="produkty" element={<Products profile={profile} />} />
+          <Route path="fakty" element={<Facts profile={profile} />} />
           <Route path="uzytkownicy" element={!profile ? null : admin ? <Users /> : <Navigate to="/" />} />
           <Route path="konto" element={<Account profile={profile} />} />
           <Route path="*" element={<Navigate to="/" />} />

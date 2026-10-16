@@ -13,16 +13,18 @@ export default function Dashboard({ profile }) {
   useEffect(() => {
     (async () => {
       try {
-        const [idx, prod, bundles, flagged, ch] = await Promise.all([
+        const [idx, prod, bundles, flagged, ch, fp, fa] = await Promise.all([
           indexStatus(),
           supabase.from('products').select('id', { count: 'exact', head: true }),
           supabase.from('products').select('id', { count: 'exact', head: true }).eq('is_bundle', true),
           supabase.from('products').select('id', { count: 'exact', head: true }).neq('import_flags', '[]'),
           supabase.from('channels').select('code, marketplace, language, baselinker_source_id, active'),
+          supabase.from('kb_facts').select('id', { count: 'exact', head: true }).eq('status', 'do_akceptacji'),
+          supabase.from('kb_facts').select('id', { count: 'exact', head: true }).eq('status', 'zatwierdzony'),
         ])
-        const err = [prod, bundles, flagged, ch].find(x => x.error)?.error
+        const err = [prod, bundles, flagged, ch, fp, fa].find(x => x.error)?.error
         if (err) throw err
-        setData({ idx, products: prod.count || 0, bundles: bundles.count || 0, flagged: flagged.count || 0, channels: ch.data || [] })
+        setData({ idx, products: prod.count || 0, bundles: bundles.count || 0, flagged: flagged.count || 0, channels: ch.data || [], factsPending: fp.count || 0, factsApproved: fa.count || 0 })
       } catch (e) { setError(plError(e.message)) }
     })()
   }, [])
@@ -40,7 +42,7 @@ export default function Dashboard({ profile }) {
   return (
     <section className="page">
       <h1>Dashboard</h1>
-      <p className="muted lead">Witaj{profile?.full_name ? `, ${profile.full_name}` : ''}. Etap 1: wybór i import produktów z Baselinkera.</p>
+      <p className="muted lead">Witaj{profile?.full_name ? `, ${profile.full_name}` : ''}. Etap 2: import z Baselinkera i fakty z opisów.</p>
 
       <div className="grid">
         <div className="panel">
@@ -61,6 +63,15 @@ export default function Dashboard({ profile }) {
           </dl>
           <Link className="link-dark" to="/produkty">Przejdź do produktów →</Link>
         </div>
+      </div>
+
+      <div className="panel">
+        <h2>Fakty</h2>
+        <dl className="facts">
+          <dt>Do akceptacji</dt><dd>{data.factsPending.toLocaleString('pl-PL')}</dd>
+          <dt>Zatwierdzone</dt><dd>{data.factsApproved.toLocaleString('pl-PL')}</dd>
+        </dl>
+        <Link className="link-dark" to="/fakty">{data.factsPending ? 'Przejdź do akceptacji →' : 'Przejdź do faktów →'}</Link>
       </div>
 
       <div className="panel">
