@@ -1,0 +1,49 @@
+import { useEffect, useState } from 'react'
+import { NavLink, Outlet } from 'react-router-dom'
+import JobOverlay from './JobOverlay.jsx'
+import { jobActivity, activeJobCount } from '../jobs.js'
+import { supabase, ROLE_LABELS } from '../supabase.js'
+
+// Menu w kolejności pracy. Kolejne moduły (fakty, frazy, szablony, weryfikacja, publikacja, eMAG) dochodzą etapami.
+const GROUPS = [
+  { label: 'Start', items: [{ to: '/', label: 'Dashboard', end: true }] },
+  { label: 'Produkty', items: [{ to: '/katalog', label: 'Katalog Baselinkera' }, { to: '/produkty', label: 'Produkty w aplikacji' }] },
+  { label: 'Konfiguracja', admin: true, items: [{ to: '/uzytkownicy', label: 'Użytkownicy' }] },
+]
+
+export default function Layout({ profile }) {
+  const [working, setWorking] = useState(activeJobCount())
+  useEffect(() => { const f = e => setWorking(e.detail); jobActivity.addEventListener('change', f); return () => jobActivity.removeEventListener('change', f) }, [])
+  return (
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <span className={working ? 'brand-mark flowing' : 'brand-mark'} aria-hidden="true"><i /><i /><i /><i /><i /></span>
+          <span className="sr-only" role="status">{working ? 'Trwa zadanie' : ''}</span>
+          <span title={working ? `Trwa zadanie (${working})` : undefined}>ContentAI</span>
+        </div>
+        <nav aria-label="Główna nawigacja">
+          {GROUPS.filter(g => !g.admin || profile?.role === 'admin').map(g => (
+            <div key={g.label} className="nav-group">
+              <span className="nav-group-label">{g.label}</span>
+              {g.items.map(n => (
+                <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>{n.label}</NavLink>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="sidebar-foot">
+          <NavLink to="/konto" className="me">
+            <span className="me-name">{profile?.full_name || profile?.email || '…'}</span>
+            <span className="me-role">{ROLE_LABELS[profile?.role] || ''}</span>
+          </NavLink>
+          <button className="link-btn" onClick={() => supabase.auth.signOut()}>Wyloguj</button>
+        </div>
+      </aside>
+      <main className="content">
+        <Outlet />
+      </main>
+      <JobOverlay />
+    </div>
+  )
+}

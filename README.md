@@ -17,13 +17,13 @@ Adres po wdrożeniu: https://tadych-ai.github.io/contentAI/
 ## Uruchomienie
 
 ### 1. Supabase
-1. SQL Editor → wklej i uruchom całość `supabase/001_schema.sql` (na czystym projekcie).
+1. SQL Editor → wklej i uruchom całość pliku `001_schema.sql` (na czystym projekcie).
 2. Authentication → Users → Add user (zaznacz „Auto Confirm User”). Profil tworzy się sam z rolą „generujący”.
 3. Pierwszemu adminowi nadaj rolę w SQL Editor: `update profiles set role = 'admin' where email = 'twoj@email';`
 4. Project Settings → API Keys: skopiuj klucz **publishable/anon** (do aplikacji) i **secret** (tylko do n8n).
 
 ### 2. n8n
-1. Import workflow: `n8n/contentai-zadania-v1.json`.
+1. Import workflow z pliku `contentai-zadania-v1.json`.
 2. Credentiale (Header Auth):
    - **Supabase apikey (secret)**: Name `apikey`, Value = klucz `sb_secret_…`,
    - **Baselinker X-BLToken**: Name `X-BLToken`, Value = token API Baselinkera (na etap 1 wystarczy odczyt katalogu).
@@ -34,7 +34,6 @@ Adres po wdrożeniu: https://tadych-ai.github.io/contentAI/
 ### 3. GitHub
 1. Settings → Pages → Source: **GitHub Actions**.
 2. Settings → Secrets and variables → Actions → **Variables**:
-   - `VITE_SUPABASE_URL` = `https://nyivgmimhwlhavdkgnzg.supabase.co`
    - `VITE_SUPABASE_ANON_KEY` = klucz publishable/anon
    - `VITE_N8N_WEBHOOK_URL` = Production URL webhooka n8n
 3. Actions → „Wdrozenie na GitHub Pages” → Run workflow.
@@ -59,6 +58,5 @@ Limit API Baselinkera: 100 zapytań na minutę – workflow robi przerwę 0,7 s 
 
 ```
 src/            aplikacja (pages/, components/, catalog.js – filtr i zlecenia, jobs.js – kolejka zadań n8n)
-supabase/       schemat bazy
-n8n/            workflow do zaimportowania w n8n
 ```
+Schemat bazy (`001_schema.sql`) i workflow n8n (`contentai-zadania-v1.json`) są utrzymywane poza repozytorium aplikacji.
