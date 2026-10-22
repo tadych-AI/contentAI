@@ -27,15 +27,30 @@ export const DEFAULT_TOKENS = [
 const fold = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim()
 const clean = s => String(s ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').replace(/^[\s,;+–|-]+|[\s,;+–|-]+$/g, '').trim()
 
+// Element wzoru: wbudowany (TOKENS) albo własny ({ custom: true, label, ai }); każdy może mieć stałą wartość (value), np. marka „Aqua 4 You”
+export const tokenLabel = t => t?.custom ? (t.label || 'Własny element') : (TOKENS[t?.key]?.label || t?.key)
+export const tokenAi = t => t?.custom ? (t.ai || t.label || '') : (TOKENS[t?.key]?.ai || '')
+export const validTokens = pattern => (pattern?.tokens || DEFAULT_TOKENS).filter(t => t && (TOKENS[t.key] || t.custom) && t.enabled !== false)
+// elementy, które ustala AI (bez stałej wartości)
+export const aiTokens = pattern => validTokens(pattern).filter(t => !clean(t.value))
+export const newCustomKey = tokens => { let i = 1; while ((tokens || []).some(t => t.key === `wlasny_${i}`)) i++; return `wlasny_${i}` }
+
+// wartość elementu: ręcznie poprawiona w produkcie > stała wartość wzoru > wartość od AI
+const valueOf = (t, parts, lang) => {
+  const src = lang === 'pl' ? (parts?._pl || {}) : (parts || {})
+  if ((parts?._edited || []).includes(t.key)) return clean(src[t.key] ?? (lang === 'pl' ? parts?.[t.key] : ''))
+  return clean(t.value) || clean(src[t.key])
+}
+
 // Składa tytuł z elementów w kolejności wzoru; elementy puste pomija, powtórzenia usuwa.
-// Za długi tytuł skraca, usuwając elementy nieobowiązkowe od końca wzoru.
-export function assembleTitle(pattern, parts) {
-  const tokens = (pattern?.tokens || DEFAULT_TOKENS).filter(t => t && TOKENS[t.key] && t.enabled !== false)
+// Za długi tytuł skraca, usuwając elementy nieobowiązkowe od końca wzoru. lang 'pl' = tłumaczenie kontrolne z parts._pl
+export function assembleTitle(pattern, parts, lang = 'hu') {
+  const tokens = validTokens(pattern)
   const maxLen = Number(pattern?.max_len) || 150
   const build = list => {
     let out = ''
     for (const t of list) {
-      const v = clean(parts?.[t.key])
+      const v = valueOf(t, parts, lang)
       if (!v) continue
       if (out && fold(out).includes(fold(v))) continue          // np. marka już w typie lub modelu
       out += out ? (t.sep || ' ') + v : v.charAt(0).toUpperCase() + v.slice(1)
@@ -45,11 +60,11 @@ export function assembleTitle(pattern, parts) {
   let used = tokens.slice(), title = build(used)
   const dropped = []
   while (title.length > maxLen) {
-    const i = used.map(t => !t.required && !!clean(parts?.[t.key])).lastIndexOf(true)
+    const i = used.map(t => !t.required && !!valueOf(t, parts, lang)).lastIndexOf(true)
     if (i < 0) break
     dropped.push(used[i].key); used = used.filter((_, j) => j !== i); title = build(used)
   }
-  const missing = tokens.filter(t => t.required && !clean(parts?.[t.key])).map(t => t.key)
+  const missing = tokens.filter(t => t.required && !valueOf(t, parts, lang)).map(t => t.key)
   return { title, dropped, missing, over: title.length > maxLen, length: title.length }
 }
 

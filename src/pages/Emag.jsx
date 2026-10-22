@@ -94,31 +94,34 @@ function FamilyEditor({ fam, members, chars, familyTypes, saved, canApprove, onS
         </select>{!auto.type && members.length > 1 && <span className="field-help hint-inline">{auto.why}</span>}</label>
       </div>
       <div className="row-form" style={{ margin: '10px 0' }}><label className="check"><input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)} /> pokaż wszystkie charakterystyki ({chars.length})</label></div>
-      <div className="table-wrap">
-        <table className="compact char-grid">
-          <thead><tr><th>SKU</th>{shown.map(c => <th key={c.key} title={c.key}>{c.name}{c.level === 'mandatory' && <span className="req"> *</span>}</th>)}</tr></thead>
-          <tbody>{members.map(p => (
-            <tr key={p.id}>
-              <td className="mono">{p.sku}</td>
+      <div className="variant-cards">
+        {members.map(p => (
+          <div key={p.id} className="variant-card">
+            <div className="variant-card-head"><span className="mono">{p.sku}</span><span className="muted small">{p.name}</span></div>
+            <div className="char-fields">
               {shown.map(c => {
                 const cur = vals[p.id]?.[c.key]?.value || '', origin = vals[p.id]?.[c.key]?.origin || ''
                 const bad = c.restrictive && cur && !matchAllowed(cur, c.values)
-                return <td key={c.key} title={origin ? `źródło: ${origin}` : ''} className={bad ? 'tr-miss' : !cur && c.level === 'mandatory' ? 'empty-cell' : ''}>
-                  {c.restrictive
-                    ? <select value={matchAllowed(cur, c.values) || ''} onChange={e => set(p.id, c.key, e.target.value)} aria-label={`${c.name} ${p.sku}`}><option value="">—</option>{c.values.map(v => <option key={v} value={v}>{v}</option>)}</select>
-                    : <input value={cur} list={`dl-${c.id}`} onChange={e => set(p.id, c.key, e.target.value)} aria-label={`${c.name} ${p.sku}`} style={{ minWidth: 120, margin: 0, padding: '5px 8px' }} />}
-                  {origin && <span className="muted" style={{ display: 'block', fontSize: 11 }}>{origin}</span>}
-                </td>
+                return (
+                  <label key={c.key} className={'char-field' + (bad ? ' tr-miss' : !cur && c.level === 'mandatory' ? ' empty-cell' : '')} title={origin ? `źródło: ${origin}` : c.key}>
+                    <span className="char-name">{c.name}{c.level === 'mandatory' && <span className="req"> *</span>}</span>
+                    {c.restrictive
+                      ? <select value={matchAllowed(cur, c.values) || ''} onChange={e => set(p.id, c.key, e.target.value)}><option value="">—</option>{c.values.map(v => <option key={v} value={v}>{v}</option>)}</select>
+                      : <input value={cur} list={`dl-${c.id}`} onChange={e => set(p.id, c.key, e.target.value)} />}
+                    <span className="char-meta">{origin && <span className="muted">{origin}</span>}
+                      {members.length > 1 && cur && <button type="button" className="link-dark" onClick={e => { e.preventDefault(); setVals(v => Object.fromEntries(Object.entries(v).map(([pid, x]) => [pid, { ...x, [c.key]: { value: cur, origin: 'ręcznie' } }]))) }}>do wszystkich</button>}</span>
+                  </label>
+                )
               })}
-            </tr>
-          ))}</tbody>
-        </table>
+            </div>
+          </div>
+        ))}
         {shown.filter(c => !c.restrictive).map(c => <datalist key={c.id} id={`dl-${c.id}`}>{c.values.slice(0, 200).map(v => <option key={v} value={v} />)}</datalist>)}
       </div>
       <div className="row-form" style={{ marginTop: 10 }}>
         <button className="btn ghost" disabled={busy} onClick={() => save(false)}>Zapisz</button>
         {canApprove && <button className="btn" disabled={busy} onClick={() => save(true)}>Zapisz i zatwierdź</button>}
-        <span className="muted small">* obowiązkowe · listy rozwijane = słownik eMAG · pod wartością źródło (BL, AI, ręcznie)</span>
+        <span className="muted small">* obowiązkowe · listy rozwijane = słownik eMAG · pod polem źródło wartości (BL, AI, ręcznie) · „do wszystkich” kopiuje wartość do pozostałych wariantów</span>
       </div>
       {msg && <p className={msg.type} role="status">{msg.text}</p>}
     </div>
@@ -262,7 +265,7 @@ export default function Emag({ profile }) {
             <span className="row-form"><button className="link-dark" onClick={() => setSel(new Set(list.map(f => f.id)))}>Zaznacz wszystkie ({list.length})</button>{sel.size > 0 && <button className="link-dark" onClick={() => setSel(new Set())}>Odznacz</button>}</span>
           </div>
           <div className="table-wrap">
-            <table className="compact">
+            <table className="compact resp">
               <thead><tr><th className="check" /><th>Rodzina</th><th className="num">Warianty</th><th>Opisy HU</th><th>Charakterystyki</th><th>Typ rodziny eMAG</th><th className="num">ID rodziny</th></tr></thead>
               <tbody>{list.map(f => { const st = famState(f)
                 const auto = st.filled ? chooseFamilyType(familyTypes, chars, st.m.map(p => ({ values: data.saved.get(p.id)?.values || {} }))) : null
@@ -271,11 +274,11 @@ export default function Emag({ profile }) {
                     <tr>
                       <td className="check"><input type="checkbox" checked={sel.has(f.id)} aria-label={`Zaznacz ${f.name}`} onChange={() => setSel(s => { const n = new Set(s); n.has(f.id) ? n.delete(f.id) : n.add(f.id); return n })} /></td>
                       <td className="name"><button className="row-toggle" aria-expanded={open === f.id} onClick={() => setOpen(open === f.id ? null : f.id)}>{f.name}</button>{f.emag_family_name && <span className="muted small"> · {f.emag_family_name}</span>}</td>
-                      <td className="num">{st.m.length}</td>
-                      <td>{st.descOk === st.m.length ? <span className="tag okt">{st.descOk}/{st.m.length}</span> : <span className="tag warn">{st.descOk}/{st.m.length} zaakceptowanych</span>}</td>
-                      <td>{!st.filled ? <span className="muted small">nie uzupełniono</span> : st.approved ? <span className="tag okt">zatwierdzone</span> : st.missing ? <span className="tag warn">braki obowiązkowe: {st.missing}</span> : <span className="tag info">{st.filled}/{st.m.length} do weryfikacji</span>}</td>
-                      <td className="small">{st.m.length < 2 ? <span className="muted">—</span> : f.emag_family_type || (auto?.type ? <span title="dobrany automatycznie">{auto.type}</span> : <span className="hint-inline">{st.filled ? 'brak pasującego typu' : '—'}</span>)}</td>
-                      <td className="num mono">{f.emag_family_id}</td>
+                      <td className="num" data-label="Warianty">{st.m.length}</td>
+                      <td data-label="Opisy HU">{st.descOk === st.m.length ? <span className="tag okt">{st.descOk}/{st.m.length}</span> : <span className="tag warn">{st.descOk}/{st.m.length} zaakceptowanych</span>}</td>
+                      <td data-label="Charakterystyki">{!st.filled ? <span className="muted small">nie uzupełniono</span> : st.approved ? <span className="tag okt">zatwierdzone</span> : st.missing ? <span className="tag warn">braki obowiązkowe: {st.missing}</span> : <span className="tag info">{st.filled}/{st.m.length} do weryfikacji</span>}</td>
+                      <td className="small" data-label="Typ rodziny eMAG">{st.m.length < 2 ? <span className="muted">—</span> : f.emag_family_type || (auto?.type ? <span title="dobrany automatycznie">{auto.type}</span> : <span className="hint-inline">{st.filled ? 'brak pasującego typu' : '—'}</span>)}</td>
+                      <td className="num mono" data-label="ID rodziny">{f.emag_family_id}</td>
                     </tr>
                     {open === f.id && <tr className="detail-row"><td colSpan={7}>
                       <FamilyEditor key={`${f.id}-${catId}-${st.filled}`} fam={{ ...f, _channel: data.channel.id, _category: base.category_id }} members={st.m} chars={chars} familyTypes={familyTypes} saved={data.saved} canApprove={canEdit} onSaved={load} />

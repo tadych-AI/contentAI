@@ -86,3 +86,48 @@ button.media-tile:hover, button.media-tile:focus-visible { border-color: var(--a
 .media-thumb { width: 72px; height: 48px; object-fit: contain; border: 1px solid var(--line, #DDE3DE); border-radius: 4px; background: #fff; }
 .media-picker { border: 1px solid var(--line, #DDE3DE); border-radius: 8px; padding: 10px; background: #FAFBFA; }
 .drop-zone.drag { outline: 2px dashed var(--action); outline-offset: -6px; }
+
+/* ===== Responsywność: tabele dopasowują się do szerokości ekranu zamiast przewijać się w poziomie ===== */
+.page.wide { max-width: none; }
+table.compact { width: 100%; }
+table.compact td { white-space: normal; overflow-wrap: anywhere; }
+table.compact td.mono, table.compact td.num, table.compact td.check, table.compact td.actions, table.compact td.nowrap { white-space: nowrap; overflow-wrap: normal; }
+td.name { min-width: 160px; }
+td.path { max-width: none; }
+.table-wrap { overflow-x: visible; }
+.row-form label { min-width: min(240px, 100%); }
+.filters select, .filters input, .tpl-pick select { min-width: 0; max-width: 100%; }
+@media (max-width: 900px) {
+  .content { padding: 20px 16px; }
+  /* tabele z klasą resp: wiersz = karta, etykieta kolumny z data-label */
+  table.resp thead { display: none; }
+  table.resp, table.resp tbody, table.resp tr, table.resp td { display: block; width: 100%; }
+  table.resp tr { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; background: var(--surface); }
+  table.resp td { border: 0; padding: 4px 0; white-space: normal; text-align: left; }
+  table.resp td[data-label]::before { content: attr(data-label); display: block; font-size: 12px; color: var(--ink-soft); }
+  table.resp td.check { display: inline-block; width: auto; }
+}
+
+/* eMAG – charakterystyki jako karty wariantów */
+.variant-cards { display: flex; flex-direction: column; gap: 12px; }
+.variant-card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: #fff; }
+.variant-card-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; }
+.char-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 12px; }
+.char-field { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 4px 6px; border-radius: 6px; font-weight: 400; }
+.char-field select, .char-field input { margin: 0; padding: 5px 8px; width: 100%; min-width: 0; }
+.char-name { font-size: 12.5px; font-weight: 600; }
+.char-meta { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; min-height: 14px; }
+.char-field .req { color: var(--warn); }
+.char-field.empty-cell { background: #FFF7E6; }
+.char-field.tr-miss { background: #FCE8E6; }
+
+/* Tytuły */
+.title-pl { display: block; font-size: 12.5px; color: var(--ink-soft); }
+.token-list { display: flex; flex-direction: column; gap: 8px; }
+.token-row { display: grid; grid-template-columns: minmax(160px, 1.3fr) minmax(120px, .7fr) minmax(140px, 1fr) auto auto; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.token-row input, .token-row select { margin: 0; width: 100%; min-width: 0; }
+.token-row .token-ai { grid-column: 1 / -1; }
+@media (max-width: 900px) { .token-row { grid-template-columns: 1fr 1fr; } }
+.parts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 12px; margin: 8px 0; }
+.parts-grid label { margin: 0; font-size: 12.5px; }
+.parts-grid input { margin: 2px 0 0; padding: 5px 8px; }
