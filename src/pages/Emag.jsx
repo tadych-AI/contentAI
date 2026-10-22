@@ -193,7 +193,7 @@ export default function Emag({ profile }) {
       try {
         await runJob('emag_characteristics', { family_id: f.id, channel_id: data.channel.id, category_id: base.category_id, category_name: base.category_name,
           family: { name: f.name, brand: data.brands.get(f.brand_id) || '', category: data.cats.get(f.bl_category_id) || '' },
-          characteristics: chars.map(c => ({ key: c.key, name: c.name, level: c.level, restrictive: c.restrictive, values: c.restrictive ? c.values : c.values.slice(0, 25) })), variants }, { timeoutSec: 300, progress: f.name })
+          characteristics: chars.map(c => ({ key: c.key, name: c.name, level: c.level, restrictive: c.restrictive, values: c.restrictive ? c.values : c.values.slice(0, 25) })), variants }, { timeoutSec: 600, progress: f.name })
         done++
       } catch (e) { failed.push(`${f.name}: ${e.message}`); if (failed.length >= 2 && !done) break }
     }
