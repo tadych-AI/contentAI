@@ -61,3 +61,11 @@ button.row-toggle:hover { text-decoration: underline; }
 .proposal .name-input { width: auto; min-width: 220px; margin: 0; padding: 5px 8px; font-weight: 600; }
 .proposal table { margin-top: 6px; }
 td.check input[type=radio] { width: auto; margin: 0; }
+
+/* eMAG – edytor charakterystyk */
+.char-grid th { white-space: nowrap; font-size: 12.5px; }
+.char-grid td { vertical-align: top; }
+.char-grid select { margin: 0; padding: 5px 8px; min-width: 110px; width: auto; }
+.char-grid .req { color: var(--warn); }
+.char-grid td.empty-cell { background: #FFF7E6; }
+.char-grid td.tr-miss { background: #FCE8E6; }

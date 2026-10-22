@@ -16,17 +16,18 @@ Adres po wdrożeniu: https://tadych-ai.github.io/contentAI/
 - **Rodziny produktów**: propozycje grupowania wariantów (marka + kategoria + nazwa modelu bez wymiarów, kolorów i strony; warianty z BL zawsze razem), zatwierdzanie, wariant wiodący, łączenie i rozdzielanie,
 - **Fakty** (na rodzinę): Gemini (Vertex AI) wyciąga z opisu wariantu wiodącego i różnic pozostałych wariantów sprawdzalne fakty na trzech poziomach – marka (zatwierdzana raz), rodzina (wszystkie warianty), wariant (wskazane SKU); flagi: wymaga źródła, claim biobójczy, claim środowiskowy, nieaktualna norma, superlatyw, promocja sklepu, liczba spoza opisu, sprzeczność z parametrem. Akceptacja pojedynczo lub masowo, edycja treści, przeniesienie faktu na poziom marki.
 - **Opisy** (eMAG HU): bank fraz z DataForSEO per kategoria BL, szablony sekcji z grafikami (zdjęcia z BL wg pozycji), generacja opisu bazowego rodziny w 3 krokach (mapa fraz → treść → tłumaczenie kontrolne na PL), QA (liczby spoza faktów, zakazane sformułowania, informacje o ofercie, CAPS, limity), weryfikacja z poprawą wybranych sekcji, opisy wariantów jako adaptacja zaakceptowanego opisu bazowego.
+- **Eksport eMAG**: wgrywanie oryginalnych szablonów importu eMAG (create-product, update-product, update-product-family) per kategoria, charakterystyki wariantów (dane z BL dopasowane do słowników eMAG – kolor, typ, materiał, wymiary, pojemność – i uzupełnione przez Gemini; edycja w siatce, zatwierdzanie), nazwa i typ rodziny eMAG (dobierany automatycznie), generowanie pliku XLSX do importu w eMAG Marketplace. Domyślnie: stan 1 szt., czas wysyłki 2 dni, gwarancja z BL; ceny, VAT i GPSR puste.
 
 ## Uruchomienie
 
 ### 1. Supabase
-1. SQL Editor → wklej i uruchom całość pliku `001_schema.sql` (na czystym projekcie), potem kolejno `002_fakty.sql`, `003_rodziny.sql`, `004_opisy.sql`.
+1. SQL Editor → wklej i uruchom całość pliku `001_schema.sql` (na czystym projekcie), potem kolejno `002_fakty.sql`, `003_rodziny.sql`, `004_opisy.sql`, `005_emag.sql`.
 2. Authentication → Users → Add user (zaznacz „Auto Confirm User”). Profil tworzy się sam z rolą „generujący”.
 3. Pierwszemu adminowi nadaj rolę w SQL Editor: `update profiles set role = 'admin' where email = 'twoj@email';`
 4. Project Settings → API Keys: skopiuj klucz **publishable/anon** (do aplikacji) i **secret** (tylko do n8n).
 
 ### 2. n8n
-1. Import workflow z pliku `contentai-zadania-v4.json` (zastępuje poprzednią wersję – wyłącz i usuń starą wersję, żeby nie dublować webhooka).
+1. Import workflow z pliku `contentai-zadania-v5.json` (zastępuje poprzednią wersję – wyłącz i usuń starą wersję, żeby nie dublować webhooka).
 2. Credentiale (Header Auth):
    - **Supabase apikey (secret)**: Name `apikey`, Value = klucz `sb_secret_…`,
    - **Baselinker X-BLToken**: Name `X-BLToken`, Value = token API Baselinkera (na etap 1 wystarczy odczyt katalogu),
@@ -64,4 +65,4 @@ Limit API Baselinkera: 100 zapytań na minutę – workflow robi przerwę 0,7 s 
 ```
 src/            aplikacja (pages/, components/, catalog.js – filtr i zlecenia, jobs.js – kolejka zadań n8n)
 ```
-Schemat bazy (`001_schema.sql`, `002_fakty.sql`, `003_rodziny.sql`) i workflow n8n (`contentai-zadania-v4.json`) są utrzymywane poza repozytorium aplikacji.
+Schemat bazy (`001_schema.sql`, `002_fakty.sql`, `003_rodziny.sql`) i workflow n8n (`contentai-zadania-v5.json`) są utrzymywane poza repozytorium aplikacji.

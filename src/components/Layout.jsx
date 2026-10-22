@@ -10,6 +10,7 @@ const GROUPS = [
   { label: 'Produkty', items: [{ to: '/katalog', label: 'Katalog Baselinkera' }, { to: '/produkty', label: 'Produkty w aplikacji' }, { to: '/rodziny', label: 'Rodziny produktów' }] },
   { label: 'Przygotowanie treści', items: [{ to: '/fakty', label: 'Fakty', badge: 'facts' }, { to: '/frazy', label: 'Frazy kluczowe' }, { to: '/szablony', label: 'Szablony opisów' }] },
   { label: 'Opisy', items: [{ to: '/opisy', label: 'Opisy', badge: 'review' }] },
+  { label: 'Publikacja', items: [{ to: '/emag', label: 'Eksport eMAG' }] },
   { label: 'Konfiguracja', admin: true, items: [{ to: '/uzytkownicy', label: 'Użytkownicy' }] },
 ]
 
