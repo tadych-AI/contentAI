@@ -42,12 +42,21 @@ export function warrantyMonths(product) {
   return x ? { months: x, source: 'opis BL' } : null
 }
 
-// Kolor wariantu: z nazwy (różnicuje warianty, np. kolor maskownic), potem z parametru „Kolor” → wartość słownika eMAG
-export function colorOf(product) {
-  const fromName = variantAttrs(product.name).kolor
-  const raw = fromName || featureOf(product.features, /^kolor|^barwa/)
-  if (!raw) return null
+// Kolor samego produktu: z nazwy (bez koloru akcesoriów – syfonu, korka, nóżek, maskownic), potem z parametru „Kolor” → słownik eMAG
+const METALLIC = new Set(['chrom', 'złoty', 'miedziany', 'nikiel', 'inox', 'srebrny'])
+// produkty z akrylu/konglomeratu/ceramiki, które nie bywają metaliczne (metaliczny kolor dotyczy wtedy akcesoriów)
+const NON_METAL_PRODUCT = /wann|brodzik|umywal|misk|kompakt|bidet|zlew|zlewozmyw|pisuar/
+const METAL_PRODUCT = /bateri|syfon|odplyw|korek|uchwyt|kabin|drzwi|parawan|scian|grzejnik|deszczown|zestaw prysznic|sluchawk|wylewk|akcesori|polk|wieszak|dozownik|lustr|stelaz|przycisk/
+export function colorOf(product, { categoryPath = '' } = {}) {
+  const parts = variantAttrs(product.name)
+  const param = featureOf(product.features, /^kolor|^barwa/)
+  const raw = parts.kolor || param
+  if (!raw) return parts.kolor_akcesoriow ? { pl: null, hu: null, note: `kolor „${parts.kolor_akcesoriow}” w nazwie dotyczy akcesoriów – Szín do uzupełnienia` } : null
   const key = COLOR_WORDS.find(([, re]) => re.test(fold(raw)))?.[0]
+  const ctx = fold(`${product.name} ${categoryPath}`)
+  if (key && METALLIC.has(key) && NON_METAL_PRODUCT.test(ctx) && !METAL_PRODUCT.test(fold(categoryPath))) {
+    return { pl: raw, hu: null, note: `kolor „${raw}” (${parts.kolor ? 'z nazwy' : 'parametr BL'}) jest metaliczny, a produkt to wanna/umywalka/brodzik – to raczej kolor akcesoriów; Szín do uzupełnienia` }
+  }
   const mat = /mat/.test(fold(raw)) || /\bmat\b/.test(fold(product.name))
   return { pl: raw, hu: key ? (mat && key === 'czarny' ? 'Matt fekete' : mat && key === 'biały' ? 'Matt fehér' : COLOR_HU[key]) : null }
 }
@@ -63,8 +72,8 @@ export function presetCharacteristics(chars, product, { categoryPath = '' } = {}
     out[c.key] = { value: canon || String(value), origin }
   }
   const f = product.features || {}, name = product.name || '', all = fold(`${name} ${categoryPath}`)
-  const color = colorOf(product)
-  if (color) { if (color.hu) put('Szín', color.hu, `kolor z BL: ${color.pl}`); else notes.push(`Szín: kolor „${color.pl}” bez odpowiednika w słowniku`) }
+  const color = colorOf(product, { categoryPath })
+  if (color) { if (color.note) notes.push(`Szín: ${color.note}`); else if (color.hu) put('Szín', color.hu, `kolor z BL: ${color.pl}`); else notes.push(`Szín: kolor „${color.pl}” bez odpowiednika w słowniku`) }
   if (/hydromasa|whirlpool/.test(all)) put('Típus', 'Hidromasszázzsal', 'nazwa/kategoria')
   else if (/wolnostoj/.test(all)) put('Típus', 'Szabadon álló', 'nazwa/kategoria')
   else if (/wann/.test(all)) put('Típus', 'Standard', 'nazwa/kategoria')

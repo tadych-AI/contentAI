@@ -15,7 +15,7 @@ const FACT_FILTERS = { all: 'wszystkie', brak: 'fakty nie wyciągnięte', do_akc
 const PCOLS = 'id, sku, name, brand_id, bl_category_id, bl_parent_id, baselinker_product_id, is_bundle, family_id, source_hash'
 const FCOLS = 'id, name, brand_id, bl_category_id, lead_product_id, status, grouping, varying_attributes, facts_extracted_at, facts_source_hash, created_at'
 const chunks = (a, n) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n))
-const attrsCell = p => { const a = variantAttrs(p.name); return [a.wymiar, a.kolor, a.strona].filter(Boolean).join(' · ') || '—' }
+const attrsCell = p => { const a = variantAttrs(p.name); return [a.wymiar, a.kolor, a.kolor_akcesoriow && `akcesoria: ${a.kolor_akcesoriow}`, a.strona].filter(Boolean).join(' · ') || '—' }
 
 // ---------- propozycje dla produktów bez rodziny ----------
 function Proposals({ dicts, brands, canApprove, profile, onSaved, onClose }) {
@@ -106,7 +106,7 @@ function Proposals({ dicts, brands, canApprove, profile, onSaved, onClose }) {
               {p.items.map(i => (
                 <tr key={i.id}>
                   <td className="check"><input type="radio" name={`lead-${p.key}`} checked={p.lead_id === i.id} onChange={() => update(p.key, x => ({ ...x, lead_id: i.id }))} aria-label="Wariant wiodący" title="Wariant wiodący" /></td>
-                  <td className="mono">{i.sku}</td><td className="name">{i.name}</td><td>{[i.attrs.wymiar, i.attrs.kolor, i.attrs.strona].filter(Boolean).join(' · ') || '—'}</td>
+                  <td className="mono">{i.sku}</td><td className="name">{i.name}</td><td>{[i.attrs.wymiar, i.attrs.kolor, i.attrs.kolor_akcesoriow && `akcesoria: ${i.attrs.kolor_akcesoriow}`, i.attrs.strona].filter(Boolean).join(' · ') || '—'}</td>
                   <td className="actions"><button className="link-dark" onClick={() => detach(p.key, i)}>Wyłącz</button></td>
                 </tr>
               ))}
