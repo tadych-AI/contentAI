@@ -92,7 +92,7 @@ async function nextVersion(channelId, productId) {
 
 async function launch(descId, payload) {
   try {
-    await runJob('generate_description', { ...payload, description_id: descId }, { timeoutSec: 420 })
+    await runJob('generate_description', { ...payload, description_id: descId }, { timeoutSec: 900 })
   } catch (e) {
     await supabase.from('descriptions').update({ status: 'blad', qa: { pass: false, errors: [e.message], warnings: [] } }).eq('id', descId)
     throw e

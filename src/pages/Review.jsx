@@ -160,9 +160,13 @@ function ReviewDetail({ id, profile }) {
         </label>
       </header>
 
-      {d.status === 'generowanie' && <div className="panel"><p className="muted">AI pisze opis i tłumaczenie kontrolne (zwykle 1–3 minuty). Strona odświeży się sama.</p></div>}
+      {d.status === 'generowanie' && <div className="panel"><p className="muted">AI pisze opis i tłumaczenie kontrolne, a jeśli kontrola znajdzie uwagi – poprawia je automatycznie (do 2 rund; zwykle 1–5 minut). Strona odświeży się sama.</p></div>}
       {d.status !== 'generowanie' && (
         <>
+          {qa.auto_fix?.rounds > 0 && (
+            <p className="muted small" role="status">Automatyczna poprawka: {qa.auto_fix.rounds === 1 ? '1 runda' : `${qa.auto_fix.rounds} rundy`}, poprawione pola: {[...new Set(qa.auto_fix.history.flatMap(h => h.changed))].join(', ') || '—'}.
+              {(qa.errors?.length > 0 || qa.warnings?.length > 0) ? ' Pozostałe uwagi poniżej wymagają decyzji redaktora (np. brak faktów).' : ' Kontrola nie ma uwag.'}{qa.auto_fix.failed ? ` Poprawka przerwana: ${qa.auto_fix.failed}` : ''}</p>
+          )}
           {(qa.errors?.length > 0 || qa.warnings?.length > 0) && (
             <div className="panel qa">
               {qa.errors?.length > 0 && <><h2>Błędy do poprawy</h2><ul className="qa-err">{qa.errors.map((x, i) => <li key={i}>{x}</li>)}</ul></>}

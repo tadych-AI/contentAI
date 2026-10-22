@@ -28,7 +28,7 @@ Adres po wdrożeniu: https://tadych-ai.github.io/contentAI/
 4. Project Settings → API Keys: skopiuj klucz **publishable/anon** (do aplikacji) i **secret** (tylko do n8n).
 
 ### 2. n8n
-1. Import workflow z pliku `contentai-zadania-v5.json` (zastępuje poprzednią wersję – wyłącz i usuń starą wersję, żeby nie dublować webhooka).
+1. Import workflow z pliku `contentai-zadania-v6.json` (zastępuje poprzednią wersję – wyłącz i usuń starą wersję, żeby nie dublować webhooka).
 2. Credentiale (Header Auth):
    - **Supabase apikey (secret)**: Name `apikey`, Value = klucz `sb_secret_…`,
    - **Baselinker X-BLToken**: Name `X-BLToken`, Value = token API Baselinkera (na etap 1 wystarczy odczyt katalogu),
@@ -66,4 +66,4 @@ Limit API Baselinkera: 100 zapytań na minutę – workflow robi przerwę 0,7 s 
 ```
 src/            aplikacja (pages/, components/, catalog.js – filtr i zlecenia, jobs.js – kolejka zadań n8n)
 ```
-Schemat bazy (`001_schema.sql`, `002_fakty.sql`, `003_rodziny.sql`) i workflow n8n (`contentai-zadania-v5.json`) są utrzymywane poza repozytorium aplikacji.
+Schemat bazy (`001_schema.sql`, `002_fakty.sql`, `003_rodziny.sql`) i workflow n8n (`contentai-zadania-v6.json`) są utrzymywane poza repozytorium aplikacji.
