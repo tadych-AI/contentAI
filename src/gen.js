@@ -69,7 +69,8 @@ export async function buildContext(familyId, channelId) {
 }
 
 const productInfo = p => ({ sku: p.sku, name: p.name, attributes: attrsOf(p), params: p.features || {},
-  bundle: p.is_bundle ? (p.bundle_items || []).map(b => `${b.quantity} × ${b.bl_id}`) : [] })
+  bundle: p.is_bundle ? (p.bundle_items || []).map(b => `${b.quantity || 1} × ${b.name || 'składnik ' + b.bl_id}${b.sku ? ` (SKU ${b.sku})` : ''}${b.gift ? ' – GRATIS' : ''}${Object.keys(b.features || {}).length ? ` – ${Object.entries(b.features).slice(0, 8).map(([k, v]) => `${k}: ${v}`).join('; ')}` : ''}`) : [],
+  gifts: p.is_bundle ? (p.bundle_items || []).filter(b => b.gift).map(b => `${b.quantity > 1 ? b.quantity + ' × ' : ''}${b.name || 'składnik ' + b.bl_id}`) : [] })
 
 function payloadFrom(ctx, extra) {
   return {
@@ -140,7 +141,7 @@ export async function regenerateSections(desc, sections, comments, general, onCr
   return ins.data.id
 }
 
-// Warianty z zaakceptowanego opisu bazowego: paczki po 6 SKU w jednym wykonaniu n8n
+// Warianty z zaakceptowanego opisu bazowego: paczki po 3 SKU, kolejno
 export async function generateVariants(base, { onlyMissing = true } = {}) {
   const ctx = await buildContext(base.family_id, base.channel_id)
   if (!ctx.template) throw new Error('Brak aktywnego szablonu')
@@ -167,13 +168,17 @@ export async function generateVariants(base, { onlyMissing = true } = {}) {
   const byId = Object.fromEntries(todo.map(p => [p.id, p]))
   const variants = created.map(c => { const p = byId[c.product_id]; return { description_id: c.id, ...productInfo(p), images: resolveImages(ctx.template, p, { media: ctx.media, brandId: ctx.family.brand_id }),
     facts: factsFor(ctx.facts, p.id).map(f => f.content) } })
-  for (let i = 0; i < variants.length; i += 6) {
-    const chunk = variants.slice(i, i + 6)
-    try { await startJob('generate_variants', { ...common, variants: chunk }) }
-    catch (e) {
-      await supabase.from('descriptions').update({ status: 'blad', qa: { pass: false, errors: [e.message], warnings: [] } }).in('id', chunk.map(v => v.description_id))
-      throw e
+  // paczki po 3 SKU, jedna po drugiej (równoległe wykonania przeciążały Vertex → przekroczenia czasu); działa w tle, postęp w nakładce zadań
+  const chunks = []
+  for (let i = 0; i < variants.length; i += 3) chunks.push(variants.slice(i, i + 3))
+  ;(async () => {
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i]
+      try { await runJob('generate_variants', { ...common, variants: chunk }, { timeoutSec: 1800, progress: `paczka ${i + 1} z ${chunks.length} (${chunk.map(v => v.sku).join(', ')})` }) }
+      catch (e) {
+        await supabase.from('descriptions').update({ status: 'blad', qa: { pass: false, errors: [e.message], warnings: [] } }).in('id', chunk.map(v => v.description_id)).eq('status', 'generowanie')
+      }
     }
-  }
+  })()
   return variants.length
 }

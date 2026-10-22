@@ -142,13 +142,14 @@ export default function Emag({ profile }) {
       const { data: chs } = await supabase.from('channels').select('*').eq('active', true).order('code')
       const channel = (chs || []).find(c => c.code === 'emag_hu') || (chs || [])[0]
       if (!channel) throw new Error('Brak aktywnego kanału.')
-      const [tpls, fams, prods, chars, descs, facts, brands, cats, exports] = await Promise.all([
+      const [tpls, fams, prods, chars, descs, facts, titlesRows, brands, cats, exports] = await Promise.all([
         supabase.from('emag_templates').select('id, channel_id, file_type, category_id, template_id, category_name, file_name, structure, uploaded_at').eq('channel_id', channel.id).order('category_id'),
         fetchAll('product_families', 'id, name, brand_id, bl_category_id, lead_product_id, status, emag_family_id, emag_family_name, emag_family_type', x => x.eq('status', 'zatwierdzone').order('name')),
         fetchAll('products', PCOLS, x => x.not('family_id', 'is', null)),
         fetchAll('product_characteristics', 'product_id, channel_id, marketplace_category_id, values, missing_mandatory, status', x => x.eq('channel_id', channel.id)),
         fetchAll('descriptions', 'id, product_id, version, status, fields, html', x => x.eq('channel_id', channel.id).in('status', OK_DESC).order('version', { ascending: false })),
         fetchAll('kb_facts', 'id, content, level, family_id, brand_id, variant_ids', x => x.eq('status', 'zatwierdzony')),
+        fetchAll('product_titles', 'product_id, title, status', x => x.eq('channel_id', channel.id)),
         fetchAll('brands', 'id, name'), fetchAll('bl_categories', 'bl_category_id, path'),
         supabase.from('emag_exports').select('id, file_type, category_id, product_count, created_at').order('created_at', { ascending: false }).limit(5),
       ])
@@ -157,7 +158,7 @@ export default function Emag({ profile }) {
       members.forEach(list => list.sort((a, b) => a.sku.localeCompare(b.sku)))
       const desc = new Map(); descs.forEach(d => { if (!desc.has(d.product_id)) desc.set(d.product_id, d) })
       const saved = new Map(chars.map(c => [c.product_id, c]))
-      setData({ channel, templates: tpls.data || [], families: fams, members, desc, saved, facts, brands: new Map(brands.map(b => [b.id, b.name])), cats: new Map(cats.map(c => [c.bl_category_id, c.path])), exports: exports.data || [] })
+      setData({ channel, templates: tpls.data || [], families: fams, members, desc, saved, facts, titles: new Map(titlesRows.map(t => [t.product_id, t])), brands: new Map(brands.map(b => [b.id, b.name])), cats: new Map(cats.map(c => [c.bl_category_id, c.path])), exports: exports.data || [] })
       if (!catId && (tpls.data || []).length) setCatId(String(tpls.data.find(t => t.file_type === 'create')?.category_id || tpls.data[0].category_id))
     } catch (e) { setError(plError(e.message)) }
   }
@@ -189,7 +190,7 @@ export default function Emag({ profile }) {
       setJob({ busy: true, progress: `Charakterystyki: rodzina ${i + 1} z ${fams.length} (${f.name})` })
       const famFacts = data.facts.filter(x => x.family_id === f.id || (x.level === 'marka' && x.brand_id === f.brand_id))
       const variants = m.map(p => { const pre = presetCharacteristics(chars, p, { categoryPath: data.cats.get(p.bl_category_id) || '' })
-        return { product_id: p.id, sku: p.sku, name: p.name, params: p.features || {}, facts: factsFor(famFacts, p.id).map(x => x.content), title: data.desc.get(p.id)?.fields?.TITLE || '', preset: pre.values, notes: pre.notes } })
+        return { product_id: p.id, sku: p.sku, name: p.name, params: p.features || {}, facts: factsFor(famFacts, p.id).map(x => x.content), title: (data.titles.get(p.id)?.status === 'zatwierdzony' && data.titles.get(p.id).title) || data.desc.get(p.id)?.fields?.TITLE || '', preset: pre.values, notes: pre.notes } })
       try {
         await runJob('emag_characteristics', { family_id: f.id, channel_id: data.channel.id, category_id: base.category_id, category_name: base.category_name,
           family: { name: f.name, brand: data.brands.get(f.brand_id) || '', category: data.cats.get(f.bl_category_id) || '' },
@@ -217,10 +218,12 @@ export default function Emag({ profile }) {
         const family = { id: f.emag_family_id, name: f.emag_family_name || f.name, type, size: m.length }
         famIds.push(f.id)
         for (const p of m) {
-          const row = buildRow(fileType, { product: p, description: data.desc.get(p.id), brand: data.brands.get(p.brand_id) || data.brands.get(f.brand_id) || '', values: data.saved.get(p.id)?.values || {}, family, template: structure })
+          const tt = data.titles.get(p.id)
+          const row = buildRow(fileType, { product: p, description: data.desc.get(p.id), title: tt?.status === 'zatwierdzony' ? tt.title : '', brand: data.channel.limits?.export_brand || data.brands.get(p.brand_id) || data.brands.get(f.brand_id) || '', values: data.saved.get(p.id)?.values || {}, family, template: structure })
           const probs = rowProblems(fileType, row, structure.characteristics)
+          if (tt?.status !== 'zatwierdzony' && row.name) probs.push(`tytuł z opisu – brak zatwierdzonego tytułu w module Tytuły eMAG`)
           if (m.length > 1 && !type) probs.push('rodzina bez typu eMAG – produkt trafi jako osobny')
-          if (probs.length && !includeIncomplete && probs.some(x => !x.startsWith('rodzina bez typu'))) skipped.push({ sku: p.sku, problems: probs })
+          if (probs.length && !includeIncomplete && probs.some(x => !x.startsWith('rodzina bez typu') && !x.startsWith('tytuł z opisu'))) skipped.push({ sku: p.sku, problems: probs })
           else { rows.push(row); if (probs.length) skipped.push({ sku: p.sku, problems: probs, included: true }) }
         }
       }
@@ -242,7 +245,7 @@ export default function Emag({ profile }) {
   return (
     <section className="page wide">
       <h1>Eksport do eMAG</h1>
-      <p className="muted lead">Charakterystyki produktów (z danych Baselinkera dopasowanych do słowników eMAG i uzupełnione przez AI), rodziny eMAG i generowanie pliku importu. Do pliku trafiają zaakceptowane opisy HU. Stan: 1 szt., czas wysyłki: 2 dni, gwarancja z Baselinkera; ceny, VAT i dane GPSR na razie puste.</p>
+      <p className="muted lead">Charakterystyki produktów (z danych Baselinkera dopasowanych do słowników eMAG i uzupełnione przez AI), rodziny eMAG i generowanie pliku importu. Do pliku trafiają zaakceptowane opisy HU i zatwierdzone tytuły (ekran Tytuły eMAG); marka w pliku: {data.channel.limits?.export_brand || 'z Baselinkera'}. Stan: 1 szt., czas wysyłki: 2 dni, gwarancja z Baselinkera; ceny, VAT i dane GPSR na razie puste.</p>
       <TemplatesPanel channel={data.channel} templates={data.templates} canEdit={canEdit} onChanged={load} />
 
       {base && (<>

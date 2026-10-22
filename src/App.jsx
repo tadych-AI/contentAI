@@ -14,6 +14,7 @@ import Templates from './pages/Templates.jsx'
 import Keywords from './pages/Keywords.jsx'
 import Emag from './pages/Emag.jsx'
 import Media from './pages/Media.jsx'
+import Titles from './pages/Titles.jsx'
 import Account from './pages/Account.jsx'
 import Users from './pages/Users.jsx'
 
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="szablony" element={<Templates profile={profile} />} />
           <Route path="opisy" element={<Review profile={profile} />} />
           <Route path="opisy/:id" element={<Review profile={profile} />} />
+          <Route path="tytuly" element={<Titles profile={profile} />} />
           <Route path="emag" element={<Emag profile={profile} />} />
           <Route path="uzytkownicy" element={!profile ? null : admin ? <Users /> : <Navigate to="/" />} />
           <Route path="konto" element={<Account profile={profile} />} />

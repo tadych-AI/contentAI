@@ -25,11 +25,19 @@ function Detail({ p, dicts }) {
       if (data.bundle_items?.length) {
         const ids = data.bundle_items.map(b => b.bl_id)
         const { data: cat } = await supabase.from('bl_catalog').select('bl_id, sku, name').in('bl_id', ids)
-        bundle = data.bundle_items.map(b => ({ ...b, ...(cat || []).find(c => c.bl_id === b.bl_id) }))
+        bundle = data.bundle_items.map(b => ({ ...(cat || []).find(c => c.bl_id === b.bl_id), ...b }))
       }
       setD({ ...data, bundle })
     })()
   }, [p.id])
+  const [giftMsg, setGiftMsg] = useState(null)
+  async function toggleGift(blId) {
+    const items = (d.bundle_items || []).map(b => b.bl_id === blId ? { ...b, gift: !b.gift, gift_source: 'ręcznie' } : b)
+    const { error } = await supabase.from('products').update({ bundle_items: items }).eq('id', p.id)
+    if (error) { setGiftMsg({ type: 'error', text: plError(error.message) }); return }
+    setD(x => ({ ...x, bundle_items: items, bundle: x.bundle.map(b => b.bl_id === blId ? { ...b, gift: !b.gift, gift_source: 'ręcznie' } : b) }))
+    setGiftMsg({ type: 'ok', text: 'Zapisano. Zmiana obejmie nowo wyciągane fakty i generowane opisy.' })
+  }
   if (err) return <p className="error">{err}</p>
   if (!d) return <DrainLoader inline label="Wczytywanie…" />
   const feats = Object.entries(p.features || {})
@@ -43,7 +51,12 @@ function Detail({ p, dicts }) {
       </div>
       <div>
         {(p.images || []).length > 0 && <><h3>Zdjęcia ({p.images.length})</h3><div className="thumbs">{p.images.map(im => <a key={im.url} href={im.url} target="_blank" rel="noreferrer"><img src={im.url} alt={`Zdjęcie ${im.position}`} loading="lazy" /></a>)}</div></>}
-        {d.bundle.length > 0 && <><h3>Skład zestawu</h3><table className="kv"><tbody>{d.bundle.map(b => <tr key={b.bl_id}><td>{b.quantity} × {b.sku || b.bl_id}</td><td>{b.name || <span className="muted">poza indeksem</span>}</td></tr>)}</tbody></table></>}
+        {d.bundle.length > 0 && <><h3>Skład zestawu</h3>
+          <p className="muted small" style={{ margin: '0 0 6px' }}>Dane składników (parametry, opis) są pobierane z Baselinkera przy imporcie i trafiają do faktów oraz opisu zestawu. Gratis jest podkreślany w opisie.</p>
+          <table className="kv"><tbody>{d.bundle.map(b => <tr key={b.bl_id}><td>{b.quantity} × {b.sku || b.bl_id}</td>
+            <td>{b.name || <span className="muted">poza indeksem</span>}{b.description === undefined && b.features === undefined && <span className="hint-inline small"> · brak danych składnika – zaimportuj zestaw ponownie</span>}</td>
+            <td><label className="check small" title={b.gift_source ? `rozpoznano: ${b.gift_source}` : ''}><input type="checkbox" checked={!!b.gift} onChange={() => toggleGift(b.bl_id)} /> gratis</label></td></tr>)}</tbody></table>
+          {giftMsg && <p className={giftMsg.type + ' small'}>{giftMsg.text}</p>}</>}
         <h3 style={{ marginTop: 14 }}>Parametry ({feats.length})</h3>
         {feats.length ? <table className="kv"><tbody>{feats.map(([k, v]) => <tr key={k}><td>{k}</td><td>{String(v)}</td></tr>)}</tbody></table> : <p className="hint">Brak parametrów w BL.</p>}
         <table className="kv" style={{ marginTop: 10 }}><tbody>

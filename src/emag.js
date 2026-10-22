@@ -124,14 +124,15 @@ export function characteristicIssues(chars, values) {
   return { missing, invalid }
 }
 
-// Wiersz pliku importu dla produktu. ctx: { product, description, brand, values, family, template, defaults }
-export function buildRow(fileType, { product, description, brand, values, family, template, defaults = {} }) {
+// Wiersz pliku importu dla produktu. ctx: { product, description, title, brand, values, family, template, defaults }
+// title = zatwierdzony tytuł z modułu tytułów (gdy brak – tytuł z opisu)
+export function buildRow(fileType, { product, description, title, brand, values, family, template, defaults = {} }) {
   const imgs = [...(product.images || [])].sort((a, b) => a.position - b.position).map(i => i.url)
   const lang = (template.languages || []).find(l => /hu_HU/i.test(l)) || (template.languages || [])[0] || 'Magyar (hu_HU)'
   const w = warrantyMonths(product)
   const row = {
     part_number: String(product.sku || '').replace(/^#/, ''), vendor_ext_id: product.baselinker_product_id, ean: product.ean || '',
-    name: description?.fields?.TITLE || '', brand: brand || '', description: description?.html || '', source_language: lang,
+    name: title || description?.fields?.TITLE || '', brand: brand || '', description: description?.html || '', source_language: lang,
     main_image_url: imgs[0] || '', other_image_url1: imgs[1] || '', other_image_url2: imgs[2] || '', other_image_url3: imgs[3] || '', other_image_url4: imgs[4] || '', other_image_url5: imgs[5] || '',
   }
   if (family && family.size > 1 && family.type) Object.assign(row, { family_id: family.id, family_name: family.name, family_type: family.type })
@@ -150,7 +151,7 @@ export function rowProblems(fileType, row, chars) {
   const p = []
   if (!row.part_number) p.push('brak kodu produktu (SKU)')
   if (!row.vendor_ext_id) p.push('brak ID produktu')
-  if (!row.name) p.push('brak zaakceptowanego opisu (tytuł)')
+  if (!row.name) p.push('brak tytułu (moduł Tytuły eMAG albo zaakceptowany opis)')
   if (!row.description) p.push('brak zaakceptowanego opisu (HTML)')
   if (String(row.description || '').length > 32000) p.push('opis HTML dłuższy niż 32 000 znaków (limit komórki Excela)')
   if (!row.brand) p.push('brak marki')

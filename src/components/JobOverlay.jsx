@@ -12,6 +12,7 @@ const JOB_LABEL = {
   generate_description: 'Generowanie opisu (Gemini)',
   generate_variants: 'Generowanie opisów wariantów',
   emag_characteristics: 'Uzupełnianie charakterystyk eMAG',
+  generate_titles: 'Tytuły eMAG (Gemini)',
 }
 const STAGE_LABEL = { przygotowanie: 'Przygotowanie zadania…', wyslane: 'Zadanie wysłane do n8n…', w_toku: 'n8n pracuje – wynik pojawi się automatycznie' }
 const clock = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
