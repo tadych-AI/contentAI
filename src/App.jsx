@@ -9,6 +9,9 @@ import Catalog from './pages/Catalog.jsx'
 import Products from './pages/Products.jsx'
 import Facts from './pages/Facts.jsx'
 import Families from './pages/Families.jsx'
+import Review from './pages/Review.jsx'
+import Templates from './pages/Templates.jsx'
+import Keywords from './pages/Keywords.jsx'
 import Account from './pages/Account.jsx'
 import Users from './pages/Users.jsx'
 
@@ -52,6 +55,10 @@ export default function App() {
           <Route path="produkty" element={<Products profile={profile} />} />
           <Route path="rodziny" element={<Families profile={profile} />} />
           <Route path="fakty" element={<Facts profile={profile} />} />
+          <Route path="frazy" element={<Keywords profile={profile} />} />
+          <Route path="szablony" element={<Templates profile={profile} />} />
+          <Route path="opisy" element={<Review profile={profile} />} />
+          <Route path="opisy/:id" element={<Review profile={profile} />} />
           <Route path="uzytkownicy" element={!profile ? null : admin ? <Users /> : <Navigate to="/" />} />
           <Route path="konto" element={<Account profile={profile} />} />
           <Route path="*" element={<Navigate to="/" />} />

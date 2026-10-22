@@ -8,6 +8,9 @@ const JOB_LABEL = {
   bl_import: 'Import produktów z Baselinkera',
   kb_extract_product: 'Wyciąganie faktów z opisów (Gemini)',
   kb_extract_family: 'Wyciąganie faktów rodziny (Gemini)',
+  keywords_refresh: 'Odświeżanie fraz kluczowych (DataForSEO)',
+  generate_description: 'Generowanie opisu (Gemini)',
+  generate_variants: 'Generowanie opisów wariantów',
 }
 const STAGE_LABEL = { przygotowanie: 'Przygotowanie zadania…', wyslane: 'Zadanie wysłane do n8n…', w_toku: 'n8n pracuje – wynik pojawi się automatycznie' }
 const clock = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`

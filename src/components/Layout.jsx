@@ -8,7 +8,8 @@ import { supabase, ROLE_LABELS } from '../supabase.js'
 const GROUPS = [
   { label: 'Start', items: [{ to: '/', label: 'Dashboard', end: true }] },
   { label: 'Produkty', items: [{ to: '/katalog', label: 'Katalog Baselinkera' }, { to: '/produkty', label: 'Produkty w aplikacji' }, { to: '/rodziny', label: 'Rodziny produktów' }] },
-  { label: 'Przygotowanie treści', items: [{ to: '/fakty', label: 'Fakty', badge: 'facts' }] },
+  { label: 'Przygotowanie treści', items: [{ to: '/fakty', label: 'Fakty', badge: 'facts' }, { to: '/frazy', label: 'Frazy kluczowe' }, { to: '/szablony', label: 'Szablony opisów' }] },
+  { label: 'Opisy', items: [{ to: '/opisy', label: 'Opisy', badge: 'review' }] },
   { label: 'Konfiguracja', admin: true, items: [{ to: '/uzytkownicy', label: 'Użytkownicy' }] },
 ]
 
@@ -17,7 +18,11 @@ export default function Layout({ profile }) {
   const loc = useLocation()
   // licznik faktów czekających na akceptację (odświeżany przy zmianie ekranu)
   const [pending, setPending] = useState(0)
-  useEffect(() => { supabase.from('kb_facts').select('id', { count: 'exact', head: true }).eq('status', 'do_akceptacji').then(r => setPending(r.count || 0)) }, [loc.pathname, loc.search])
+  const [review, setReview] = useState(0)
+  useEffect(() => {
+    supabase.from('kb_facts').select('id', { count: 'exact', head: true }).eq('status', 'do_akceptacji').then(r => setPending(r.count || 0))
+    supabase.from('descriptions').select('id', { count: 'exact', head: true }).eq('status', 'do_weryfikacji').then(r => setReview(r.count || 0))
+  }, [loc.pathname, loc.search])
   useEffect(() => { const f = e => setWorking(e.detail); jobActivity.addEventListener('change', f); return () => jobActivity.removeEventListener('change', f) }, [])
   return (
     <div className="shell">
@@ -32,7 +37,7 @@ export default function Layout({ profile }) {
             <div key={g.label} className="nav-group">
               <span className="nav-group-label">{g.label}</span>
               {g.items.map(n => (
-                <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>{n.label}{n.badge === 'facts' && pending > 0 && <span className="nav-badge" aria-label={`${pending} faktów czeka na akceptację`}>{pending}</span>}</NavLink>
+                <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>{n.label}{n.badge === 'facts' && pending > 0 && <span className="nav-badge" aria-label={`${pending} faktów czeka na akceptację`}>{pending}</span>}{n.badge === 'review' && review > 0 && <span className="nav-badge" aria-label={`${review} opisów czeka na weryfikację`}>{review}</span>}</NavLink>
               ))}
             </div>
           ))}

@@ -3,11 +3,14 @@ import { Link } from 'react-router-dom'
 import { supabase, plError, plN, fetchAll } from '../supabase.js'
 import { loadDicts } from '../catalog.js'
 import { proposeFamilies, variantAttrs, descLen, familyFactState, extractFamilyFacts } from '../families.js'
+import { generateBase } from '../gen.js'
+import { useNavigate } from 'react-router-dom'
 import DrainLoader from '../components/DrainLoader.jsx'
 
 const PAGE = 100
 const ATTR_LABEL = { wymiar: 'wymiar', kolor: 'kolor', strona: 'strona' }
 const STATUS = { propozycja: 'propozycja', zatwierdzone: 'zatwierdzona', odrzucone: 'odrzucona' }
+const DSTATUS = { generowanie: 'w trakcie', do_weryfikacji: 'do weryfikacji', poprawki: 'poprawiony', zaakceptowany: 'zaakceptowany', opublikowany: 'opublikowany', blad: 'błąd' }
 const FACT_FILTERS = { all: 'wszystkie', brak: 'fakty nie wyciągnięte', do_akceptacji: 'fakty do akceptacji', nieaktualne: 'dane w BL się zmieniły', gotowe: 'fakty zatwierdzone' }
 const PCOLS = 'id, sku, name, brand_id, bl_category_id, bl_parent_id, baselinker_product_id, is_bundle, family_id, source_hash'
 const FCOLS = 'id, name, brand_id, bl_category_id, lead_product_id, status, grouping, varying_attributes, facts_extracted_at, facts_source_hash, created_at'
@@ -138,18 +141,29 @@ export default function Families({ profile }) {
   const [open, setOpen] = useState(null)
   const [sel, setSel] = useState(new Set())
   const [job, setJob] = useState(null)   // { busy, progress, result, error, ok }
+  const nav = useNavigate()
 
   async function load() {
     try {
-      const [families, products, brandRows, dicts, facts] = await Promise.all([
+      const [families, products, brandRows, dicts, facts, chs, descs] = await Promise.all([
         fetchAll('product_families', FCOLS, x => x.order('name')), fetchAll('products', PCOLS), fetchAll('brands', 'id, name'), loadDicts(),
         fetchAll('kb_facts', 'family_id, status', x => x.not('family_id', 'is', null)),
+        supabase.from('channels').select('id, code, marketplace, language, active').eq('active', true).order('code'),
+        fetchAll('descriptions', 'id, family_id, channel_id, product_id, is_base, version, status', x => x.order('version', { ascending: false })),
       ])
+      const channel = (chs.data || [])[0] || null
+      // najnowszy opis bazowy rodziny w kanale + stan opisów wariantów
+      const bases = new Map(), variants = new Map()
+      for (const d of descs) {
+        if (!channel || d.channel_id !== channel.id || !d.family_id) continue
+        if (d.is_base) { if (!bases.has(d.family_id)) bases.set(d.family_id, d) }
+        else { const m = variants.get(d.family_id) || new Map(); if (!m.has(d.product_id)) m.set(d.product_id, d); variants.set(d.family_id, m) }
+      }
       const members = new Map()
       products.forEach(p => { if (p.family_id) { if (!members.has(p.family_id)) members.set(p.family_id, []); members.get(p.family_id).push(p) } })
       const counts = new Map()
       facts.forEach(f => { const c = counts.get(f.family_id) || { do_akceptacji: 0, zatwierdzony: 0, odrzucony: 0 }; c[f.status]++; counts.set(f.family_id, c) })
-      setData({ families, members, counts, unassigned: products.filter(p => !p.family_id).length, brands: new Map(brandRows.map(b => [b.id, b.name])), dicts })
+      setData({ families, members, counts, channel, bases, variants, unassigned: products.filter(p => !p.family_id).length, brands: new Map(brandRows.map(b => [b.id, b.name])), dicts })
     } catch (e) { setError(plError(e.message)) }
   }
   useEffect(() => { load() }, [])
@@ -211,6 +225,22 @@ export default function Families({ profile }) {
     } catch (e) { setJob({ error: e.message }) }
   }
 
+  async function genOne(f) {
+    setJob({ busy: true, progress: `Opis bazowy: ${f.name} (1–3 min)` })
+    try { await generateBase(f.id, data.channel.id, id => nav(`/opisy/${id}`)) }
+    catch (e) { setJob({ error: e.message }); load() }
+  }
+  async function bulkDescriptions() {
+    const fs = chosen().filter(f => f.status === 'zatwierdzone')
+    const failed = []; let done = 0
+    for (let i = 0; i < fs.length; i++) {
+      setJob({ busy: true, progress: `Opisy bazowe: rodzina ${i + 1} z ${fs.length} (${fs[i].name})` })
+      try { await generateBase(fs[i].id, data.channel.id); done++ } catch (e) { failed.push(`${fs[i].name}: ${e.message}`) }
+    }
+    setJob(failed.length ? { error: `Wygenerowano ${done} z ${fs.length}. Błędy: ${failed.join(' · ')}` } : { ok: `Wygenerowano ${plN(done, 'opis bazowy', 'opisy bazowe', 'opisów bazowych')} – sprawdź je na ekranie Opisy.` })
+    setSel(new Set()); load()
+  }
+
   if (error && !data) return <section className="page"><h1>Rodziny produktów</h1><p className="error">{error}</p></section>
   if (!data) return <section className="page"><DrainLoader /></section>
 
@@ -259,7 +289,7 @@ export default function Families({ profile }) {
           <div className="table-wrap">
             <table className="compact">
               <thead><tr><th className="check"><input type="checkbox" aria-label="Zaznacz rodziny na tej stronie" checked={pageRows.length > 0 && pageRows.every(f => sel.has(f.id))} onChange={e => setSel(s => { const n = new Set(s); pageRows.forEach(f => e.target.checked ? n.add(f.id) : n.delete(f.id)); return n })} /></th>
-                <th>Rodzina</th><th>Marka</th><th className="num">Warianty</th><th>Różnice</th><th>Wariant wiodący</th><th>Status</th><th>Fakty</th></tr></thead>
+                <th>Rodzina</th><th>Marka</th><th className="num">Warianty</th><th>Różnice</th><th>Wariant wiodący</th><th>Status</th><th>Fakty</th><th>Opis {data.channel ? `${data.channel.marketplace} ${data.channel.language.toUpperCase()}` : ''}</th></tr></thead>
               <tbody>
                 {pageRows.map(f => {
                   const m = (data.members.get(f.id) || []).slice().sort((a, b) => a.sku.localeCompare(b.sku))
@@ -283,9 +313,12 @@ export default function Families({ profile }) {
                         <td>{f.status === 'zatwierdzone' ? <span className="tag okt">zatwierdzona</span> : <>
                           <span className="tag">{STATUS[f.status]}</span>{canApprove && <button className="link-dark gap" onClick={() => patch(f.id, { status: 'zatwierdzone' })}>Zatwierdź</button>}</>}</td>
                         <td>{st.key === 'brak' ? <span className="muted small">{st.label}</span> : <Link to={`/fakty?rodzina=${f.id}`} className={`tag ${st.key === 'gotowe' ? 'okt' : st.key === 'nieaktualne' ? 'warn' : 'info'}`}>{st.label}</Link>}</td>
+                        <td>{(() => { const b = data.bases.get(f.id); if (!b) return <span className="muted small">—</span>
+                          const vs = [...(data.variants.get(f.id) || new Map()).values()]; const ok = vs.filter(x => ['zaakceptowany', 'opublikowany'].includes(x.status)).length
+                          return <><Link to={`/opisy/${b.id}`} className={`tag st-${b.status}`}>v{b.version} · {DSTATUS[b.status] || b.status}</Link>{m.length > 1 && b.status === 'zaakceptowany' && <span className="muted small"> warianty {ok}/{m.length - 1}</span>}</> })()}</td>
                       </tr>
                       {open === f.id && (
-                        <tr className="detail-row"><td colSpan={8}>
+                        <tr className="detail-row"><td colSpan={9}>
                           <div style={{ padding: '6px 0 12px' }}>
                             <label style={{ marginTop: 0, maxWidth: 420 }}>Nazwa rodziny<input defaultValue={f.name} onBlur={e => e.target.value.trim() && e.target.value.trim() !== f.name && patch(f.id, { name: e.target.value.trim() })} /></label>
                             <table className="compact" style={{ marginTop: 12 }}>
@@ -297,6 +330,12 @@ export default function Families({ profile }) {
                                 </tr>
                               ))}</tbody>
                             </table>
+                            {f.status === 'zatwierdzone' && data.channel && (
+                              <div className="row-form" style={{ marginTop: 12 }}>
+                                <button className="btn ghost" disabled={job?.busy} onClick={() => genOne(f)}>{data.bases.get(f.id) ? 'Generuj nowy opis bazowy' : 'Generuj opis bazowy'} ({data.channel.marketplace} {data.channel.language.toUpperCase()})</button>
+                                <span className="muted small">z zatwierdzonych faktów rodziny i wariantu wiodącego; potem weryfikacja i opisy wariantów</span>
+                              </div>
+                            )}
                             {f.grouping?.rule && <p className="muted small" style={{ marginTop: 8 }}>Podstawa grupowania: {f.grouping.rule === 'nazwa' ? 'nazwa modelu' : f.grouping.rule === 'bl' ? 'warianty w Baselinkerze' : f.grouping.rule === 'recznie' ? 'zmiana ręczna' : f.grouping.rule}{f.grouping.sku_stems?.length ? ` · rdzenie SKU: ${f.grouping.sku_stems.join(', ')}` : ''}</p>}
                           </div>
                         </td></tr>
@@ -332,6 +371,7 @@ export default function Families({ profile }) {
           {sel.size > 0 && !job?.busy && (
             <span className="row-form">
               <button className="btn" disabled={!selApproved} onClick={bulkFacts}>Wyciągnij fakty ({selApproved})</button>
+              {data.channel && <button className="btn ghost" disabled={!selApproved} onClick={bulkDescriptions}>Generuj opisy bazowe ({selApproved})</button>}
               {canApprove && selApproved < sel.size && <button className="btn ghost" onClick={bulkApprove}>Zatwierdź</button>}
               {canApprove && sel.size >= 2 && <button className="btn ghost" onClick={bulkMerge}>Połącz</button>}
               {canApprove && <button className="btn ghost danger" onClick={bulkDissolve}>Rozwiąż</button>}
