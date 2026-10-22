@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import JobOverlay from './JobOverlay.jsx'
 import { jobActivity, activeJobCount } from '../jobs.js'
@@ -25,15 +25,44 @@ export default function Layout({ profile }) {
     supabase.from('descriptions').select('id', { count: 'exact', head: true }).eq('status', 'do_weryfikacji').then(r => setReview(r.count || 0))
   }, [loc.pathname, loc.search])
   useEffect(() => { const f = e => setWorking(e.detail); jobActivity.addEventListener('change', f); return () => jobActivity.removeEventListener('change', f) }, [])
+  // menu na wąskim ekranie: zwijane, zamyka się po przejściu do innego widoku
+  const [menuOpen, setMenuOpen] = useState(false)
+  useEffect(() => setMenuOpen(false), [loc.pathname])
+  // tabele: etykiety kolumn przy komórkach (na wąskim ekranie wiersz tabeli staje się kartą)
+  const mainRef = useRef(null)
+  useEffect(() => {
+    const el = mainRef.current
+    if (!el) return
+    const label = () => {
+      for (const table of el.querySelectorAll('table:not(.no-resp)')) {
+        const heads = [...(table.tHead?.rows[0]?.cells || [])].map(th => th.textContent.trim())
+        if (!heads.length) continue
+        for (const tr of table.tBodies[0]?.rows || []) {
+          let col = 0
+          for (const td of tr.cells) {
+            if (td.colSpan > 1) { td.classList.add('full'); col += td.colSpan; continue }
+            const h = heads[col++] || ''
+            if (h && td.getAttribute('data-label') !== h) td.setAttribute('data-label', h)
+          }
+        }
+      }
+    }
+    label()
+    let t = null
+    const mo = new MutationObserver(() => { clearTimeout(t); t = setTimeout(label, 50) })
+    mo.observe(el, { childList: true, subtree: true })
+    return () => { mo.disconnect(); clearTimeout(t) }
+  }, [])
   return (
-    <div className="shell">
+    <div className={'shell' + (menuOpen ? ' menu-open' : '')}>
       <aside className="sidebar">
+        <button className="menu-toggle" aria-expanded={menuOpen} aria-controls="main-nav" onClick={() => setMenuOpen(o => !o)}>{menuOpen ? 'Zamknij' : 'Menu'}</button>
         <div className="brand">
           <span className={working ? 'brand-mark flowing' : 'brand-mark'} aria-hidden="true"><i /><i /><i /><i /><i /></span>
           <span className="sr-only" role="status">{working ? 'Trwa zadanie' : ''}</span>
           <span title={working ? `Trwa zadanie (${working})` : undefined}>ContentAI</span>
         </div>
-        <nav aria-label="Główna nawigacja">
+        <nav id="main-nav" aria-label="Główna nawigacja">
           {GROUPS.filter(g => !g.admin || profile?.role === 'admin').map(g => (
             <div key={g.label} className="nav-group">
               <span className="nav-group-label">{g.label}</span>
@@ -51,7 +80,7 @@ export default function Layout({ profile }) {
           <button className="link-btn" onClick={() => supabase.auth.signOut()}>Wyloguj</button>
         </div>
       </aside>
-      <main className="content">
+      <main className="content" ref={mainRef}>
         <Outlet />
       </main>
       <JobOverlay />

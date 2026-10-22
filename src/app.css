@@ -99,13 +99,16 @@ td.path { max-width: none; }
 .filters select, .filters input, .tpl-pick select { min-width: 0; max-width: 100%; }
 @media (max-width: 900px) {
   .content { padding: 20px 16px; }
-  /* tabele z klasą resp: wiersz = karta, etykieta kolumny z data-label */
-  table.resp thead { display: none; }
-  table.resp, table.resp tbody, table.resp tr, table.resp td { display: block; width: 100%; }
-  table.resp tr { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; background: var(--surface); }
-  table.resp td { border: 0; padding: 4px 0; white-space: normal; text-align: left; }
-  table.resp td[data-label]::before { content: attr(data-label); display: block; font-size: 12px; color: var(--ink-soft); }
-  table.resp td.check { display: inline-block; width: auto; }
+  /* tabele: wiersz = karta, etykieta kolumny z data-label (nadawane automatycznie w Layout) */
+  .content table:not(.no-resp) thead { display: none; }
+  .content table:not(.no-resp), .content table:not(.no-resp) > tbody, .content table:not(.no-resp) > tbody > tr, .content table:not(.no-resp) > tbody > tr > td { display: block; width: 100%; }
+  .content table:not(.no-resp) > tbody > tr { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; background: var(--surface); }
+  .content table:not(.no-resp) > tbody > tr > td { border: 0; padding: 4px 0; white-space: normal; text-align: left; min-width: 0; max-width: none; }
+  .content table:not(.no-resp) > tbody > tr > td[data-label]::before { content: attr(data-label); display: block; font-size: 12px; color: var(--ink-soft); }
+  .content table:not(.no-resp) > tbody > tr > td.check { display: inline-block; width: auto; }
+  .content table:not(.no-resp) > tbody > tr > td.check + td { display: inline-block; width: auto; margin-left: 8px; }
+  .content table:not(.no-resp) > tbody > tr > td:empty { display: none; }
+  .content table:not(.no-resp) > tbody > tr.detail-row { border: 0; padding: 0; background: none; }
 }
 
 /* eMAG – charakterystyki jako karty wariantów */
@@ -131,3 +134,33 @@ td.path { max-width: none; }
 .parts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 12px; margin: 8px 0; }
 .parts-grid label { margin: 0; font-size: 12.5px; }
 .parts-grid input { margin: 2px 0 0; padding: 5px 8px; }
+
+/* ===== Menu na wąskim ekranie ===== */
+.menu-toggle { display: none; }
+@media (max-width: 860px) {
+  .sidebar { flex-direction: row; flex-wrap: wrap; align-items: center; padding: 10px 14px; gap: 8px; }
+  .sidebar .brand { padding: 0; order: 1; flex: 1; }
+  .menu-toggle { display: inline-flex; order: 2; background: transparent; border: 1px solid #6E7FA6; color: #fff; border-radius: 6px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+  .sidebar nav, .sidebar .sidebar-foot { display: none; order: 3; width: 100%; }
+  .menu-open .sidebar nav { display: flex; flex-direction: column; }
+  .menu-open .sidebar .sidebar-foot { display: flex; margin-top: 8px; }
+  .content { padding: 18px 14px; }
+  h1 { font-size: 24px; }
+  .panel { padding: 14px; }
+  .filter-grid { grid-template-columns: 1fr; }
+  .row-form { flex-wrap: wrap; }
+  .row-form label { min-width: 0; flex: 1 1 100%; }
+  .import-bar { flex-wrap: wrap; gap: 8px; }
+  .import-bar .row-form { width: 100%; }
+  .panel-head { flex-wrap: wrap; gap: 8px; }
+  .result-head { flex-wrap: wrap; gap: 8px; }
+  input, select, textarea { max-width: 100%; }
+  .tabs { flex-wrap: wrap; }
+  pre, code { white-space: pre-wrap; overflow-wrap: anywhere; }
+}
+/* nic nie może poszerzać strony ponad ekran */
+.content { overflow-x: hidden; }
+.content img, .content video, .content iframe { max-width: 100%; height: auto; }
+.preview-frame { max-width: 100%; overflow-x: auto; }
+@media (max-width: 860px) { .shell { grid-template-rows: auto 1fr; align-content: start; min-height: 100vh; } .sidebar { align-self: start; } }
+.content .tag { overflow-wrap: normal; word-break: normal; }
