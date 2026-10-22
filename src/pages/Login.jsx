@@ -1,3 +1,4 @@
+import BathTub from '../components/BathTub.jsx'
 import { useState } from 'react'
 import { supabase, plError } from '../supabase.js'
 
@@ -31,10 +32,8 @@ export default function Login() {
           <span className="drop d1" /><span className="drop d2" /><span className="drop d3" /><span className="drop d4" /><span className="drop d5" /><span className="drop d6" />
         </div>
         <Logo />
-        <div className="drain" aria-hidden="true">
-          <span /><span /><span /><span /><span /><span /><span />
-        </div>
-        <p className="login-claim"><span className="claim-name">ContentAI</span> <span className="claim-desc">Opisy i atrybuty na marketplace</span></p>
+        <BathTub size="xl" className="login-tub" />
+        <p className="login-claim"><span className="claim-name">TadychAI</span> <span className="claim-sub">ContentStudio</span> <span className="claim-desc">Opisy, tytuły i atrybuty na marketplace</span></p>
       </section>
       <section className="login-form">
         <form onSubmit={submit} className="panel narrow" noValidate>

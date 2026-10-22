@@ -1,4 +1,4 @@
-# ContentAI – Tadych
+# TadychAI · ContentStudio
 
 Aplikacja do przygotowania opisów i atrybutów produktów na marketplace (start: eMAG.hu) na podstawie danych z Baselinkera.
 

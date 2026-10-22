@@ -1,3 +1,4 @@
+import BathTub from './BathTub.jsx'
 import { useEffect, useState } from 'react'
 import { jobActivity, activeJobList } from '../jobs.js'
 
@@ -33,7 +34,7 @@ export default function JobOverlay() {
   return (
     <div className="job-overlay">
       <div className="job-card" role="status" aria-live="polite">
-        <span className="drain-grate lg" aria-hidden="true"><i /><i /><i /><i /><i /></span>
+        <BathTub size="lg" />
         <strong className="job-title">{JOB_LABEL[j.type] || 'Zadanie'}</strong>
         <span className="job-stage">{j.progress ? `${j.progress} · ` : ''}{STAGE_LABEL[j.stage] || j.stage}</span>
         <span className="job-time" aria-label={`Czas oczekiwania ${clock(secs)}`}>{clock(secs)}</span>

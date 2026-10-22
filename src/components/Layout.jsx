@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import JobOverlay from './JobOverlay.jsx'
+import BathTub from './BathTub.jsx'
 import { jobActivity, activeJobCount } from '../jobs.js'
 import { supabase, ROLE_LABELS } from '../supabase.js'
 
@@ -58,9 +59,9 @@ export default function Layout({ profile }) {
       <aside className="sidebar">
         <button className="menu-toggle" aria-expanded={menuOpen} aria-controls="main-nav" onClick={() => setMenuOpen(o => !o)}>{menuOpen ? 'Zamknij' : 'Menu'}</button>
         <div className="brand">
-          <span className={working ? 'brand-mark flowing' : 'brand-mark'} aria-hidden="true"><i /><i /><i /><i /><i /></span>
+          <BathTub size="xs" animate={!!working} className="brand-tub" />
           <span className="sr-only" role="status">{working ? 'Trwa zadanie' : ''}</span>
-          <span title={working ? `Trwa zadanie (${working})` : undefined}>ContentAI</span>
+          <span className="brand-text" title={working ? `Trwa zadanie (${working})` : undefined}><span className="brand-name">TadychAI</span><span className="brand-sub">ContentStudio</span></span>
         </div>
         <nav id="main-nav" aria-label="Główna nawigacja">
           {GROUPS.filter(g => !g.admin || profile?.role === 'admin').map(g => (

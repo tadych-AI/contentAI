@@ -1,8 +1,9 @@
-// Znak oczekiwania w motywie aplikacji: kratka odpływu liniowego, przez którą spływa woda
+// Znak oczekiwania w motywie aplikacji: wanna, do której nalewa się woda
+import BathTub from './BathTub.jsx'
 export default function DrainLoader({ label = 'Ładowanie…', size = 'md', inline = false }) {
   return (
     <div className={`drain-loader ${size}${inline ? ' inline' : ''}`} role="status" aria-live="polite">
-      <span className="drain-grate" aria-hidden="true"><i /><i /><i /><i /><i /></span>
+      <BathTub size={inline ? 'sm' : size} />
       {label && <span className="drain-label">{label}</span>}
     </div>
   )
