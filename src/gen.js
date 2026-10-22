@@ -33,7 +33,7 @@ export async function buildContext(familyId, channelId) {
   const { data: family, error } = await supabase.from('product_families').select('*').eq('id', familyId).single()
   if (error) throw new Error(error.message)
   const chain = await categoryChain(family.bl_category_id)
-  const [ch, br, tp, members, facts, banks, rules, cat] = await Promise.all([
+  const [ch, br, tp, members, facts, banks, rules, cat, media] = await Promise.all([
     supabase.from('channels').select('*').eq('id', channelId).single(),
     family.brand_id ? supabase.from('brands').select('id, name').eq('id', family.brand_id).single() : Promise.resolve({ data: null }),
     supabase.from('templates').select('*').eq('channel_id', channelId).eq('status', 'aktywny'),
@@ -43,6 +43,7 @@ export async function buildContext(familyId, channelId) {
     supabase.from('keyword_banks').select('*'),
     supabase.from('qa_rules').select('*').eq('status', 'aktywna'),
     family.bl_category_id ? supabase.from('bl_categories').select('path').eq('bl_category_id', family.bl_category_id).single() : Promise.resolve({ data: null }),
+    supabase.from('media_library').select('id, brand_id, role, url'),
   ])
   const err = [ch, tp, members, facts, banks, rules].find(x => x.error)?.error
   if (err) throw new Error(err.message)
@@ -61,7 +62,7 @@ export async function buildContext(familyId, channelId) {
   if (!allFacts.some(f => f.level !== 'marka')) problems.push('Brak zatwierdzonych faktów rodziny – wyciągnij i zatwierdź je na ekranie Fakty.')
   const lang = channel.language
   return {
-    problems, family, channel, brand: br.data, template, product, products, facts: allFacts, keywords, bank, categoryPath: cat.data?.path || '',
+    problems, family, channel, brand: br.data, template, media: media.data || [], product, products, facts: allFacts, keywords, bank, categoryPath: cat.data?.path || '',
     forbidden: (rules.data || []).filter(r => ['zakazany_wzorzec', 'marka_konkurencji'].includes(r.rule_type) && (!r.language || r.language === lang)).map(r => r.pattern),
     instructions: (rules.data || []).filter(r => r.rule_type === 'instrukcja' && (!r.language || r.language === lang)).map(r => r.pattern),
   }
@@ -77,7 +78,7 @@ function payloadFrom(ctx, extra) {
     product: productInfo(ctx.product),
     facts: factsFor(ctx.facts, ctx.product.id).map(f => f.content), keywords: ctx.keywords.slice(0, 150),
     template: { sections: ctx.template.sections.filter(s => s && s.enabled !== false), styles: ctx.template.styles },
-    images: resolveImages(ctx.template, ctx.product),
+    images: resolveImages(ctx.template, ctx.product, { media: ctx.media, brandId: ctx.family.brand_id }),
     limits: ctx.channel.limits || {}, forbidden: ctx.forbidden, instructions: ctx.instructions,
     title_pattern: (ctx.channel.limits || {}).title_pattern || DEFAULT_TITLE_PATTERN,
     ...extra,
@@ -164,7 +165,7 @@ export async function generateVariants(base, { onlyMissing = true } = {}) {
       facts: factsFor(ctx.facts, baseProduct.id).map(f => f.content) },
   }
   const byId = Object.fromEntries(todo.map(p => [p.id, p]))
-  const variants = created.map(c => { const p = byId[c.product_id]; return { description_id: c.id, ...productInfo(p), images: resolveImages(ctx.template, p),
+  const variants = created.map(c => { const p = byId[c.product_id]; return { description_id: c.id, ...productInfo(p), images: resolveImages(ctx.template, p, { media: ctx.media, brandId: ctx.family.brand_id }),
     facts: factsFor(ctx.facts, p.id).map(f => f.content) } })
   for (let i = 0; i < variants.length; i += 6) {
     const chunk = variants.slice(i, i + 6)

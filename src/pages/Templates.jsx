@@ -3,6 +3,8 @@ import { supabase, plError, fetchAll } from '../supabase.js'
 import { loadDicts } from '../catalog.js'
 import { renderDescription, templateFields, resolveImages, OUTPUT_PRESETS, IMAGE_SOURCES, DEFAULT_STYLES } from '../render.js'
 import Picker from '../components/Picker.jsx'
+import MediaPicker from '../components/MediaPicker.jsx'
+import { ROLE_SUGGESTIONS } from '../media.js'
 import DrainLoader from '../components/DrainLoader.jsx'
 
 const STATUS = { aktywny: 'aktywny', szkic: 'szkic', archiwalny: 'archiwalny' }
@@ -26,8 +28,12 @@ function sampleFields(template) {
   return f
 }
 
-function SectionRow({ sec, idx, count, onChange, onMove, onRemove }) {
+function SectionRow({ sec, idx, count, onChange, onMove, onRemove, lib }) {
   const set = p => onChange({ ...sec, ...p })
+  const [picking, setPicking] = useState(false)
+  const src = sec.image_source || 'none'
+  const picked = sec.image_url ? lib.media.find(m => m.url === sec.image_url) : null
+  const brandHits = src === 'brand' ? lib.media.filter(m => m.brand_id && (m.role || '').trim().toLowerCase() === (sec.image_role || '').trim().toLowerCase()) : []
   return (
     <div className="sec-row panel" style={{ padding: '12px 14px', marginBottom: 8 }}>
       <div className="sec-head" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -50,15 +56,27 @@ function SectionRow({ sec, idx, count, onChange, onMove, onRemove }) {
       {sec.type !== 'faq' && (
         <div className="filter-grid" style={{ marginTop: 4 }}>
           <label>Grafika<select value={sec.image_source || 'none'} onChange={e => set({ image_source: e.target.value })}>{Object.entries(IMAGE_SOURCES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-          {sec.image_source === 'product' && <label>Pozycja zdjęcia w Baselinkerze (1–16)<input type="number" min="1" max="16" value={sec.image_position || 1} onChange={e => set({ image_position: Number(e.target.value) || 1 })} /></label>}
-          {(sec.image_source === 'static' || sec.image_source === 'product') && <label className="span-2">{sec.image_source === 'product' ? 'Adres zapasowy (gdy produkt nie ma zdjęcia na tej pozycji)' : 'Adres URL grafiki'}<input value={sec.image_url || ''} onChange={e => set({ image_url: e.target.value.trim() })} placeholder="https://…" /></label>}
+          {src === 'product' && <label>Pozycja zdjęcia w Baselinkerze (1–16)<input type="number" min="1" max="16" value={sec.image_position || 1} onChange={e => set({ image_position: Number(e.target.value) || 1 })} /></label>}
+          {src === 'brand' && <label>Rola grafiki marki<input value={sec.image_role || ''} list="tpl-media-roles" onChange={e => set({ image_role: e.target.value })} placeholder="np. baner marki" />
+            <span className="field-help">{sec.image_role ? `Marki z grafiką o tej roli: ${[...new Set(brandHits.map(m => lib.brands.get(m.brand_id)).filter(Boolean))].join(', ') || 'brak'}` : 'Każda rodzina dostanie grafikę swojej marki o tej roli (ekran Grafiki).'}</span></label>}
+          {(src === 'static' || src === 'product' || src === 'brand') && <label className="span-2">{src === 'static' ? 'Adres URL grafiki' : 'Grafika zapasowa (gdy brak zdjęcia/grafiki marki) – adres URL'}<input value={sec.image_url || ''} onChange={e => set({ image_url: e.target.value.trim(), media_id: null })} placeholder="https://…" /></label>}
+          {src !== 'none' && (
+            <div className="span-2 row-form" style={{ alignItems: 'center' }}>
+              {sec.image_url && src !== 'product' && <img src={sec.image_url} alt="" className="media-thumb" />}
+              {src === 'library' && <span className="small">{picked ? picked.name : sec.image_url ? 'grafika spoza biblioteki' : <span className="hint-inline">nie wybrano grafiki</span>}</span>}
+              {<button type="button" className="btn ghost" onClick={() => setPicking(!picking)}>{src === 'library' || src === 'static' ? 'Wybierz z biblioteki' : 'Wybierz zapasową z biblioteki'}</button>}
+              {sec.image_url && src !== 'static' && <button type="button" className="link-dark" onClick={() => set({ image_url: '', media_id: null })}>Wyczyść</button>}
+            </div>
+          )}
+          {picking && <div className="span-2"><MediaPicker media={lib.media} brands={lib.brands} selected={sec.image_url} canUpload={lib.canUpload} onUploaded={lib.reload}
+            onPick={m => { set({ image_url: m.url, media_id: m.id }); setPicking(false) }} onClose={() => setPicking(false)} /></div>}
         </div>
       )}
     </div>
   )
 }
 
-function Editor({ tpl, dicts, sample, canEdit, onSaved, onClose }) {
+function Editor({ tpl, dicts, sample, canEdit, onSaved, onClose, lib }) {
   const [t, setT] = useState(tpl)
   const [msg, setMsg] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -69,7 +87,7 @@ function Editor({ tpl, dicts, sample, canEdit, onSaved, onClose }) {
   const setSecs = s => setT({ ...t, sections: s })
   const setSt = p => setT({ ...t, styles: { ...(t.styles || {}), ...p } })
   const setOut = p => setSt({ output: { ...out, ...p } })
-  const html = useMemo(() => renderDescription(sampleFields(t), t, resolveImages(t, sample || {})), [t, sample])
+  const html = useMemo(() => renderDescription(sampleFields(t), t, resolveImages(t, sample || {}, { media: lib.media })), [t, sample, lib.media])
 
   async function save() {
     setBusy(true); setMsg(null)
@@ -92,11 +110,12 @@ function Editor({ tpl, dicts, sample, canEdit, onSaved, onClose }) {
           <label>Status<select value={t.status} onChange={e => setT({ ...t, status: e.target.value })}>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
         </div>
         <h2 style={{ margin: '18px 0 10px' }}>Sekcje</h2>
+        <datalist id="tpl-media-roles">{[...new Set([...ROLE_SUGGESTIONS, ...lib.media.map(m => m.role).filter(Boolean)])].map(r => <option key={r} value={r} />)}</datalist>
         {secs.map((s, i) => (
           <SectionRow key={s.key} sec={s} idx={i} count={secs.length}
             onChange={n => setSecs(secs.map((x, j) => j === i ? n : x))}
             onMove={d => { const a = [...secs]; const [x] = a.splice(i, 1); a.splice(i + d, 0, x); setSecs(a) }}
-            onRemove={() => setSecs(secs.filter((_, j) => j !== i))} />
+            onRemove={() => setSecs(secs.filter((_, j) => j !== i))} lib={lib} />
         ))}
         <button className="btn ghost" onClick={() => { const faqAt = secs.findIndex(s => s.type === 'faq'); const n = { key: newKey(secs), type: 'content', enabled: true, topic: '', image_source: 'none', list: true, bold: false, accent: false }; const a = [...secs]; a.splice(faqAt < 0 ? a.length : faqAt, 0, n); setSecs(a) }}>+ Dodaj sekcję</button>
 
@@ -140,13 +159,14 @@ export default function Templates({ profile }) {
 
   async function load() {
     try {
-      const [tp, ch, dicts, prods] = await Promise.all([
+      const [tp, ch, dicts, prods, media, brands] = await Promise.all([
         supabase.from('templates').select('*').order('created_at'), supabase.from('channels').select('id, code, marketplace, language'),
-        loadDicts(), fetchAll('products', 'id, sku, name, images', q => q.order('sku')),
+        loadDicts(), fetchAll('products', 'id, sku, name, images, brand_id', q => q.order('sku')),
+        supabase.from('media_library').select('*').order('created_at', { ascending: false }), fetchAll('brands', 'id, name'),
       ])
       if (tp.error) throw tp.error
       const withImg = prods.filter(p => (p.images || []).length)
-      setData({ templates: tp.data || [], channels: ch.data || [], dicts, products: withImg })
+      setData({ templates: tp.data || [], channels: ch.data || [], dicts, products: withImg, media: media.data || [], brands: new Map(brands.map(b => [b.id, b.name])) })
       if (!sampleId && withImg[0]) setSampleId(withImg[0].id)
     } catch (e) { setErr(plError(e.message)) }
   }
@@ -163,12 +183,12 @@ export default function Templates({ profile }) {
   return (
     <section className={edit ? 'page wide' : 'page'}>
       <h1>Szablony opisów</h1>
-      <p className="muted lead">Szablon wyznacza sekcje opisu, ich tematy, grafiki (zdjęcia produktu z Baselinkera wg pozycji albo stałe adresy) i wygląd HTML. Generacja wybiera szablon kategorii rodziny, a gdy go brak – domyślny szablon kanału.</p>
+      <p className="muted lead">Szablon wyznacza sekcje opisu, ich tematy, grafiki (zdjęcia produktu z Baselinkera wg pozycji, grafiki z biblioteki – wybrane lub grafika marki wg roli – albo stałe adresy) i wygląd HTML. Generacja wybiera szablon kategorii rodziny, a gdy go brak – domyślny szablon kanału.</p>
       {edit ? (<>
         {data.products.length > 0 && (
-          <label style={{ maxWidth: 520 }}>Produkt do podglądu zdjęć<select style={{ width: '100%' }} value={sampleId} onChange={e => setSampleId(e.target.value)}>{data.products.slice(0, 500).map(p => <option key={p.id} value={p.id}>{p.sku} · {p.name}</option>)}</select></label>
+          <label style={{ maxWidth: 520 }}>Produkt do podglądu zdjęć i grafik marki<select style={{ width: '100%' }} value={sampleId} onChange={e => setSampleId(e.target.value)}>{data.products.slice(0, 500).map(p => <option key={p.id} value={p.id}>{p.sku} · {p.name}</option>)}</select></label>
         )}
-        <Editor tpl={edit} dicts={data.dicts} sample={sample} canEdit={canEdit} onClose={() => setEdit(null)} onSaved={t => { setEdit(t); load() }} />
+        <Editor tpl={edit} dicts={data.dicts} sample={sample} canEdit={canEdit} lib={{ media: data.media, brands: data.brands, canUpload: canEdit, reload: load }} onClose={() => setEdit(null)} onSaved={t => { setEdit(t); load() }} />
       </>) : (
         <div className="panel">
           <table className="compact">

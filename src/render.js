@@ -59,7 +59,7 @@ function rdContext(fields, template, images) {
   const g = k => String(fields?.[k] ?? '').trim()
   const ctx = { ...fields, TYTUL: g('HERO_H1'), LEAD: g('HERO_LEAD'), HERO_IMG: '', sekcje: [], faq: [], FAQ_H2: g('FAQ_H2') }
   for (const sec of (template?.sections || []).filter(s => s && s.enabled !== false)) {
-    const k = sec.key, src = images ? (images[k] || '') : ((sec.image_source || 'static') === 'static' ? (sec.image_url || '') : '')
+    const k = sec.key, src = images ? (images[k] || '') : (['static', 'library'].includes(sec.image_source || 'static') ? (sec.image_url || '') : '')
     if (sec.type === 'hero') ctx.HERO_IMG = src
     if (sec.type === 'content') {
       const li = sec.list === false ? [] : [1, 2, 3, 4, 5].map(b => g(`${k}_LI${b}`)).filter(Boolean)
@@ -81,7 +81,7 @@ function renderDescription(fields, template, images) {
   const attr = s => esc(s).replace(/"/g, '&quot;')
   const g = k => String(fields?.[k] ?? '').trim()
   const img = (src, alt) => src ? `<img alt="${attr(alt)}" src="${attr(src)}" style="width: 100%; height: auto">` : ''
-  const srcOf = sec => images ? (images[sec.key] || '') : ((sec.image_source || 'static') === 'static' ? (sec.image_url || '') : '')
+  const srcOf = sec => images ? (images[sec.key] || '') : (['static', 'library'].includes(sec.image_source || 'static') ? (sec.image_url || '') : '')
   const hr = '<hr style="border: none; margin: 32px auto">'
   const h2 = (text, bottom) => `<h2 style="font-size: ${st.h2_size}px; color: ${st.heading_color}; margin: 0 0 ${bottom}px 0">${esc(text)}</h2>`
   const ht = st.hero_tag === 'h2' ? 'h2' : 'h1'
@@ -153,19 +153,27 @@ export function templateFields(template) {
   return keys
 }
 
-const hasImage = sec => { const src = sec.image_source || 'static'; return src === 'static' ? !!sec.image_url : src !== 'none' }
+const hasImage = sec => { const src = sec.image_source || 'static'; return src === 'static' || src === 'library' ? !!sec.image_url : src !== 'none' }
 
-// Źródła grafik: stały adres URL, zdjęcie produktu z Baselinkera (pozycja 1–16) albo brak
-export const IMAGE_SOURCES = { product: 'zdjęcie produktu z Baselinkera', static: 'stały adres URL', none: 'bez grafiki' }
+// Źródła grafik: zdjęcie produktu z BL, grafika z biblioteki (wybrana albo grafika marki wg roli), stały adres URL albo brak
+export const IMAGE_SOURCES = { product: 'zdjęcie produktu z Baselinkera', library: 'grafika z biblioteki', brand: 'grafika marki z biblioteki (wg roli)', static: 'stały adres URL', none: 'bez grafiki' }
 
-// Dobór grafik dla konkretnego produktu (wariantu)
-export function resolveImages(template, product = {}) {
+// Dobór grafik dla konkretnego produktu (wariantu); media = wiersze media_library, brandId = marka produktu/rodziny
+export function resolveImages(template, product = {}, { media = [], brandId = null } = {}) {
   const out = {}
   const imgs = [...(product.images || [])].sort((a, b) => a.position - b.position)
+  const brand = brandId || product.brand_id || null
   for (const sec of (template?.sections || []).filter(s => s && s.enabled !== false && s.type !== 'faq')) {
     const src = sec.image_source || 'static'
     if (src === 'none') continue
-    if (src === 'static') { if (sec.image_url) out[sec.key] = sec.image_url; continue }
+    if (src === 'static' || src === 'library') { if (sec.image_url) out[sec.key] = sec.image_url; continue }
+    if (src === 'brand') {
+      const role = (sec.image_role || '').trim().toLowerCase()
+      const hit = media.find(m => brand && m.brand_id === brand && (m.role || '').trim().toLowerCase() === role)
+      if (hit) out[sec.key] = hit.url
+      else if (sec.image_url) out[sec.key] = sec.image_url   // zapasowa grafika
+      continue
+    }
     if (src === 'product') {
       const pos = Number(sec.image_position) || 1
       const hit = imgs.find(i => i.position === pos) || imgs[pos - 1]
