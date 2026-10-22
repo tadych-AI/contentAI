@@ -2,13 +2,13 @@
 import { supabase, fetchAll } from './supabase.js'
 import { resolveImages } from './render.js'
 import { runJob, startJob } from './jobs.js'
-import { variantAttrs } from './families.js'
+import { variantAttrs, colorParam } from './families.js'
 
 const MARKET = c => `${c.marketplace} ${c.language.toUpperCase()}`
 export const DEFAULT_TITLE_PATTERN = '[typ produktu] [marka] [model], [wymiary] cm, [materiał], [kolor/wykończenie]'
 
-// Atrybuty wariantu dla AI: z nazwy (wymiar, kolor, strona) – parametry z BL idą osobno
-export const attrsOf = p => Object.fromEntries(Object.entries(variantAttrs(p?.name)).filter(([, v]) => v))
+// Atrybuty wariantu dla AI: z nazwy (wymiar, strona, kolor akcesoriów); kolor produktu z parametru „Kolor” w BL, gdy jest
+export const attrsOf = p => { const a = variantAttrs(p?.name); const c = colorParam(p?.features); if (c) a.kolor = c; return Object.fromEntries(Object.entries(a).filter(([, v]) => v)) }
 
 // Łańcuch kategorii BL od najbardziej szczegółowej do korzenia (szablony i banki fraz dziedziczą w górę drzewa)
 async function categoryChain(id) {

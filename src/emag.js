@@ -1,6 +1,6 @@
 // eMAG: charakterystyki z danych Baselinkera (dopasowane do słowników z szablonu), gwarancja, typ rodziny, wiersze pliku importu.
 // Bez zależności od przeglądarki i bazy – testowane w Node.
-import { variantAttrs } from './familiesCore.js'
+import { variantAttrs, colorParam } from './familiesCore.js'
 
 const fold = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/\s+/g, ' ').trim()
 
@@ -14,7 +14,7 @@ export function matchAllowed(value, list) {
 // --- słowniki PL → HU (wartości eMAG) ---
 const COLOR_HU = { 'biały': 'Fehér', 'czarny': 'Fekete', 'złoty': 'Aranyszín', 'chrom': 'Króm', 'grafit': 'Antracitszürke', 'antracyt': 'Antracitszürke', 'szary': 'Szürke',
   'beżowy': 'Bézs', 'miedziany': 'Bronzszín', 'nikiel': 'Ezüstszín', 'inox': 'Ezüstszín', 'srebrny': 'Ezüstszín', 'brązowy': 'Barna', 'niebieski': 'Kék', 'zielony': 'Zöld', 'czerwony': 'Piros' }
-const COLOR_WORDS = [['biały', /bia[łl]/], ['czarny', /czarn/], ['złoty', /z[łl]ot/], ['chrom', /chrom/], ['grafit', /grafit/], ['antracyt', /antracyt/], ['szary', /szar/],
+const COLOR_WORDS = [['biały', /bia[łl]|white/], ['czarny', /czarn|black/], ['złoty', /z[łl]ot|gold/], ['chrom', /chrom/], ['grafit', /grafit/], ['antracyt', /antracyt/], ['szary', /szar/],
   ['beżowy', /be[żz]/], ['miedziany', /miedzian|miedź/], ['srebrny', /srebr/], ['brązowy', /br[ąa]z/], ['niebieski', /niebiesk/], ['zielony', /zielon/], ['czerwony', /czerwon/], ['inox', /inox|nierdzewn/]]
 const MATERIAL_HU = [[/akryl/, 'Akril'], [/konglomerat|kompozyt|mineral|marmur lan|solid surface/, 'Ásványi kompozit'], [/stal|stalow/, 'Acél'], [/żeliw|zeliw/, 'Öntöttvas'],
   [/ceramik|porcelan/, 'Kerámia'], [/szk[łl]o|szklan/, 'Üveg'], [/marmur/, 'Márvány'], [/abs/, 'ABS'], [/pvc/, 'PVC'], [/drewn/, 'Fa']]
@@ -42,23 +42,26 @@ export function warrantyMonths(product) {
   return x ? { months: x, source: 'opis BL' } : null
 }
 
-// Kolor samego produktu: z nazwy (bez koloru akcesoriów – syfonu, korka, nóżek, maskownic), potem z parametru „Kolor” → słownik eMAG
+// Kolor samego produktu: parametr „Kolor” z Baselinkera (źródło nadrzędne); gdy go brak – kolor z nazwy bez koloru akcesoriów → słownik eMAG
 const METALLIC = new Set(['chrom', 'złoty', 'miedziany', 'nikiel', 'inox', 'srebrny'])
-// produkty z akrylu/konglomeratu/ceramiki, które nie bywają metaliczne (metaliczny kolor dotyczy wtedy akcesoriów)
+// produkty z akrylu/konglomeratu/ceramiki, które nie bywają metaliczne (metaliczny kolor z nazwy dotyczy wtedy akcesoriów)
 const NON_METAL_PRODUCT = /wann|brodzik|umywal|misk|kompakt|bidet|zlew|zlewozmyw|pisuar/
 const METAL_PRODUCT = /bateri|syfon|odplyw|korek|uchwyt|kabin|drzwi|parawan|scian|grzejnik|deszczown|zestaw prysznic|sluchawk|wylewk|akcesori|polk|wieszak|dozownik|lustr|stelaz|przycisk/
-export function colorOf(product, { categoryPath = '' } = {}) {
-  const parts = variantAttrs(product.name)
-  const param = featureOf(product.features, /^kolor|^barwa/)
-  const raw = parts.kolor || param
-  if (!raw) return parts.kolor_akcesoriow ? { pl: null, hu: null, note: `kolor „${parts.kolor_akcesoriow}” w nazwie dotyczy akcesoriów – Szín do uzupełnienia` } : null
+const toHu = (raw, name = '') => {
   const key = COLOR_WORDS.find(([, re]) => re.test(fold(raw)))?.[0]
-  const ctx = fold(`${product.name} ${categoryPath}`)
-  if (key && METALLIC.has(key) && NON_METAL_PRODUCT.test(ctx) && !METAL_PRODUCT.test(fold(categoryPath))) {
-    return { pl: raw, hu: null, note: `kolor „${raw}” (${parts.kolor ? 'z nazwy' : 'parametr BL'}) jest metaliczny, a produkt to wanna/umywalka/brodzik – to raczej kolor akcesoriów; Szín do uzupełnienia` }
+  const mat = /\bmat/.test(fold(raw)) || /\bmat\b/.test(fold(name))
+  return { key, hu: key ? (mat && key === 'czarny' ? 'Matt fekete' : mat && key === 'biały' ? 'Matt fehér' : COLOR_HU[key]) : null }
+}
+export function colorOf(product, { categoryPath = '' } = {}) {
+  const param = colorParam(product.features)
+  if (param) return { pl: param, hu: toHu(param, product.name).hu, source: 'parametr BL „Kolor”' }
+  const parts = variantAttrs(product.name)
+  if (!parts.kolor) return parts.kolor_akcesoriow ? { pl: null, hu: null, note: `brak parametru „Kolor” w BL, a kolor „${parts.kolor_akcesoriow}” w nazwie dotyczy akcesoriów – Szín do uzupełnienia` } : null
+  const { key, hu } = toHu(parts.kolor, product.name)
+  if (key && METALLIC.has(key) && NON_METAL_PRODUCT.test(fold(`${product.name} ${categoryPath}`)) && !METAL_PRODUCT.test(fold(categoryPath))) {
+    return { pl: parts.kolor, hu: null, note: `brak parametru „Kolor” w BL; kolor „${parts.kolor}” z nazwy jest metaliczny, a produkt to wanna/umywalka/brodzik – to raczej kolor akcesoriów; Szín do uzupełnienia` }
   }
-  const mat = /mat/.test(fold(raw)) || /\bmat\b/.test(fold(product.name))
-  return { pl: raw, hu: key ? (mat && key === 'czarny' ? 'Matt fekete' : mat && key === 'biały' ? 'Matt fehér' : COLOR_HU[key]) : null }
+  return { pl: parts.kolor, hu, source: 'nazwa produktu' }
 }
 
 // Charakterystyki ustalane deterministycznie z danych BL (bez AI). chars = charakterystyki z szablonu.
@@ -73,7 +76,7 @@ export function presetCharacteristics(chars, product, { categoryPath = '' } = {}
   }
   const f = product.features || {}, name = product.name || '', all = fold(`${name} ${categoryPath}`)
   const color = colorOf(product, { categoryPath })
-  if (color) { if (color.note) notes.push(`Szín: ${color.note}`); else if (color.hu) put('Szín', color.hu, `kolor z BL: ${color.pl}`); else notes.push(`Szín: kolor „${color.pl}” bez odpowiednika w słowniku`) }
+  if (color) { if (color.note) notes.push(`Szín: ${color.note}`); else if (color.hu) put('Szín', color.hu, `${color.source}: ${color.pl}`); else { const before = notes.length; put('Szín', color.pl, color.source); if (!out[byName('Szín')?.key] && notes.length === before) notes.push(`Szín: kolor „${color.pl}” (${color.source}) bez odpowiednika w słowniku eMAG – wybierz ręcznie`) } }
   if (/hydromasa|whirlpool/.test(all)) put('Típus', 'Hidromasszázzsal', 'nazwa/kategoria')
   else if (/wolnostoj/.test(all)) put('Típus', 'Szabadon álló', 'nazwa/kategoria')
   else if (/wann/.test(all)) put('Típus', 'Standard', 'nazwa/kategoria')

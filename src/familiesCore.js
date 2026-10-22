@@ -50,6 +50,16 @@ export function colorParts(name) {
   return { product, accessory }
 }
 
+// Kolor produktu z parametrów Baselinkera: parametr „Kolor” (dokładnie), potem „Kolor …”/„Barwa …” – z pominięciem parametrów akcesoriów (np. „Kolor syfonu”)
+export function colorParam(features) {
+  const entries = Object.entries(features || {}).filter(([, v]) => v != null && String(v).trim() !== '')
+  const key = k => fold(k).replace(/[:.]/g, '').trim()
+  const exact = entries.find(([k]) => key(k) === 'kolor' || key(k) === 'barwa')
+  if (exact) return String(exact[1]).trim()
+  const other = entries.find(([k]) => /^(kolor|barwa)/.test(key(k)) && !new RegExp(ACCESSORY_RX.source, 'iu').test(k))
+  return other ? String(other[1]).trim() : null
+}
+
 export function variantAttrs(name) {
   const n = String(name || '')
   const d = n.match(DIMS_RX)
