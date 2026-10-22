@@ -7,7 +7,7 @@ import { supabase, ROLE_LABELS } from '../supabase.js'
 // Menu w kolejności pracy. Kolejne moduły (fakty, frazy, szablony, weryfikacja, publikacja, eMAG) dochodzą etapami.
 const GROUPS = [
   { label: 'Start', items: [{ to: '/', label: 'Dashboard', end: true }] },
-  { label: 'Produkty', items: [{ to: '/katalog', label: 'Katalog Baselinkera' }, { to: '/produkty', label: 'Produkty w aplikacji' }] },
+  { label: 'Produkty', items: [{ to: '/katalog', label: 'Katalog Baselinkera' }, { to: '/produkty', label: 'Produkty w aplikacji' }, { to: '/rodziny', label: 'Rodziny produktów' }] },
   { label: 'Przygotowanie treści', items: [{ to: '/fakty', label: 'Fakty', badge: 'facts' }] },
   { label: 'Konfiguracja', admin: true, items: [{ to: '/uzytkownicy', label: 'Użytkownicy' }] },
 ]

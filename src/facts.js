@@ -2,7 +2,7 @@
 import { fetchAll } from './supabase.js'
 import { runJob } from './jobs.js'
 
-export const LEVEL_LABEL = { produkt: 'Produkt', marka: 'Marka', rodzina: 'Rodzina', kategoria: 'Kategoria' }
+export const LEVEL_LABEL = { marka: 'Marka', rodzina: 'Rodzina', wariant: 'Wariant', produkt: 'Produkt', kategoria: 'Kategoria' }
 export const STATUS_LABEL = { do_akceptacji: 'Do akceptacji', zatwierdzony: 'Zatwierdzone', odrzucony: 'Odrzucone' }
 
 // Jeden produkt = jedno zadanie n8n (kolejne produkty widzą fakty marki zapisane przez poprzednie – bez powielania)

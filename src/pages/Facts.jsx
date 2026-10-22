@@ -5,10 +5,10 @@ import { LEVEL_LABEL, STATUS_LABEL } from '../facts.js'
 import DrainLoader from '../components/DrainLoader.jsx'
 
 const PAGE = 50
-const COLS = 'id, content, level, status, flags, source, source_excerpt, confirmed_by, product_id, brand_id, created_at, approved_at, products(sku, name, brand_id), brands(name)'
+const COLS = 'id, content, level, status, flags, source, source_excerpt, confirmed_by, product_id, family_id, variant_ids, brand_id, created_at, approved_at, products(sku, name, brand_id), brands(name), product_families(name)'
 const isFlagged = f => (f.flags || []).length > 0
 
-function FactCard({ f, brandName, canApprove, selected, onSelect, onChange }) {
+function FactCard({ f, brandName, skuOf, canApprove, selected, onSelect, onChange }) {
   const [text, setText] = useState(f.content)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -23,7 +23,8 @@ function FactCard({ f, brandName, canApprove, selected, onSelect, onChange }) {
     onChange(data)
   }
   const save = extra => patch({ ...(dirty ? { content: text.trim() } : {}), ...extra })
-  const toBrand = () => confirm('Przenieść fakt na poziom marki? Trafi do wszystkich produktów tej marki.') && patch({ level: 'marka', brand_id: f.brand_id || f.products?.brand_id, product_id: null })
+  const toBrand = () => confirm('Przenieść fakt na poziom marki? Trafi do opisów wszystkich produktów tej marki.') && patch({ level: 'marka', brand_id: f.brand_id || f.products?.brand_id, product_id: null, family_id: null, variant_ids: null })
+  const toFamily = () => patch({ level: 'rodzina', variant_ids: null })
 
   return (
     <article className="fact">
@@ -33,6 +34,8 @@ function FactCard({ f, brandName, canApprove, selected, onSelect, onChange }) {
         <div className="fact-meta">
           <span className="tag">{LEVEL_LABEL[f.level]}</span>
           {f.level === 'produkt' && f.products && <Link to={`/fakty?produkt=${f.product_id}`} className="link-dark">{f.products.sku} · {f.products.name}</Link>}
+          {['rodzina', 'wariant'].includes(f.level) && f.family_id && <Link to={`/fakty?rodzina=${f.family_id}`} className="link-dark">{f.product_families?.name || 'rodzina'}</Link>}
+          {f.level === 'wariant' && <span className="small">dotyczy: <span className="mono">{(f.variant_ids || []).map(id => skuOf(id)).join(', ')}</span></span>}
           {f.level === 'marka' && <span><strong>{f.brands?.name || brandName(f.brand_id)}</strong>{f.confirmed_by > 1 && <span className="muted"> · potwierdzony w {plN(f.confirmed_by, 'produkcie', 'produktach', 'produktach')}</span>}</span>}
         </div>
         {isFlagged(f) && <ul className="notes">{f.flags.map((x, i) => <li key={i} className="tag warn">{x}</li>)}</ul>}
@@ -47,7 +50,8 @@ function FactCard({ f, brandName, canApprove, selected, onSelect, onChange }) {
           {f.status !== 'do_akceptacji' && <button className="btn ghost" disabled={busy || !canApprove} onClick={() => save({ status: 'do_akceptacji' })}>Cofnij do akceptacji</button>}
         </div>
         {dirty && <button className="link-dark" disabled={busy || !text.trim()} onClick={() => save({})}>Zapisz zmianę treści</button>}
-        {f.level === 'produkt' && f.products?.brand_id && <button className="link-dark" disabled={busy} onClick={toBrand}>To fakt o całej marce →</button>}
+        {f.level === 'wariant' && <button className="link-dark" disabled={busy} onClick={toFamily}>Dotyczy całej rodziny →</button>}
+        {f.level !== 'marka' && (f.brand_id || f.products?.brand_id) && <button className="link-dark" disabled={busy} onClick={toBrand}>To fakt o całej marce →</button>}
         {!canApprove && <p className="muted small" style={{ marginTop: 10 }}>Zatwierdza akceptujący lub admin. Możesz poprawić treść.</p>}
       </div>
     </article>
@@ -58,6 +62,9 @@ export default function Facts({ profile }) {
   const canApprove = ['akceptujacy', 'admin'].includes(profile?.role)
   const [params, setParams] = useSearchParams()
   const productId = params.get('produkt') || ''
+  const familyId = params.get('rodzina') || ''
+  const [family, setFamily] = useState(null)
+  const [skus, setSkus] = useState(new Map())
   const [status, setStatus] = useState('do_akceptacji')
   const [level, setLevel] = useState('')
   const [brand, setBrand] = useState('')
@@ -77,10 +84,15 @@ export default function Facts({ profile }) {
     if (!productId) { setProduct(null); return }
     supabase.from('products').select('id, sku, name, brand_id').eq('id', productId).single().then(({ data }) => setProduct(data))
   }, [productId])
+  useEffect(() => {
+    if (!familyId) { setFamily(null); return }
+    supabase.from('product_families').select('id, name, brand_id, status, facts_extracted_at').eq('id', familyId).single().then(({ data }) => setFamily(data))
+  }, [familyId])
 
   // filtr wspólny dla listy i liczników zakładek; fakty produktu = jego fakty + fakty jego marki
   const build = (qb, withStatus = true) => {
     if (withStatus) qb = qb.eq('status', status)
+    if (familyId) qb = family?.brand_id ? qb.or(`family_id.eq.${familyId},and(level.eq.marka,brand_id.eq.${family.brand_id})`) : qb.eq('family_id', familyId)
     if (productId) qb = product?.brand_id ? qb.or(`product_id.eq.${productId},and(level.eq.marka,brand_id.eq.${product.brand_id})`) : qb.eq('product_id', productId)
     if (level) qb = qb.eq('level', level)
     if (brand) qb = qb.eq('brand_id', brand)
@@ -91,18 +103,20 @@ export default function Facts({ profile }) {
   }
 
   async function load() {
-    if (productId && product === null) return
+    if ((productId && product === null) || (familyId && family === null)) return
     setError('')
     try {
       const list = await build(supabase.from('kb_facts').select(COLS, { count: 'exact' })).order('level').order('created_at', { ascending: true }).range(page * PAGE, page * PAGE + PAGE - 1)
       if (list.error) throw list.error
+      const vids = [...new Set((list.data || []).flatMap(f => f.variant_ids || []))].filter(id => !skus.has(id))
+      if (vids.length) { const { data: ps } = await supabase.from('products').select('id, sku').in('id', vids); setSkus(m => new Map([...m, ...(ps || []).map(p => [p.id, p.sku])])) }
       const cs = await Promise.all(Object.keys(STATUS_LABEL).map(st => build(supabase.from('kb_facts').select('id', { count: 'exact', head: true }), false).eq('status', st)))
       setCounts(Object.fromEntries(Object.keys(STATUS_LABEL).map((st, i) => [st, cs[i].count || 0])))
       setRes({ rows: list.data || [], total: list.count || 0 })
     } catch (e) { setError(plError(e.message)) }
   }
-  useEffect(() => { load() }, [status, level, brand, flagged, productId, product, page])
-  useEffect(() => { setPage(0); setSel(new Set()) }, [status, level, brand, flagged, productId])
+  useEffect(() => { load() }, [status, level, brand, flagged, productId, product, familyId, family, page])
+  useEffect(() => { setPage(0); setSel(new Set()) }, [status, level, brand, flagged, productId, familyId])
 
   const brandName = useMemo(() => id => brands?.find(b => b.id === id)?.name || '', [brands])
 
@@ -121,7 +135,14 @@ export default function Facts({ profile }) {
   return (
     <section className="page">
       <h1>Fakty</h1>
-      <p className="muted lead">Fakty wyciągnięte z opisów Baselinkera. Do opisów na marketplace trafiają wyłącznie fakty zatwierdzone (plus parametry produktu). Fakty marki zatwierdzasz raz – dotyczą wszystkich produktów marki.</p>
+      <p className="muted lead">Fakty wyciągnięte z opisów Baselinkera. Do opisów na marketplace trafiają wyłącznie fakty zatwierdzone (plus parametry produktu). Fakty marki zatwierdzasz raz – dotyczą wszystkich produktów marki; fakty rodziny – wszystkich wariantów modelu; fakty wariantu – tylko wskazanych SKU.</p>
+
+      {family && (
+        <div className="panel">
+          <div className="panel-head"><h2 style={{ margin: 0 }}>Rodzina: {family.name}</h2><span className="row-form"><Link className="link-dark" to="/rodziny">Rodziny produktów</Link><button className="link-dark" onClick={() => setParams({})}>Pokaż wszystkie fakty</button></span></div>
+          <p className="muted small" style={{ margin: '6px 0 0' }}>Fakty rodziny, jej wariantów i fakty marki.</p>
+        </div>
+      )}
 
       {product && (
         <div className="panel">
@@ -137,15 +158,15 @@ export default function Facts({ profile }) {
       <div className="panel">
         <div className="filter-grid">
           <label>Szukaj w treści<input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && (setPage(0), load())} placeholder="Enter, aby szukać" /></label>
-          <label>Poziom<select value={level} onChange={e => setLevel(e.target.value)}><option value="">wszystkie</option><option value="marka">marka</option><option value="produkt">produkt</option></select></label>
-          {!productId && <label>Marka<select value={brand} onChange={e => setBrand(e.target.value)}><option value="">wszystkie</option>{brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>}
+          <label>Poziom<select value={level} onChange={e => setLevel(e.target.value)}><option value="">wszystkie</option><option value="marka">marka</option><option value="rodzina">rodzina</option><option value="wariant">wariant</option><option value="produkt">produkt</option></select></label>
+          {!productId && !familyId && <label>Marka<select value={brand} onChange={e => setBrand(e.target.value)}><option value="">wszystkie</option>{brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>}
           <label>Uwagi AI<select value={flagged} onChange={e => setFlagged(e.target.value)}><option value="">wszystkie</option><option value="tak">tylko z uwagami</option><option value="nie">bez uwag</option></select></label>
         </div>
       </div>
 
       {error && <p className="error" role="alert">{error}</p>}
       {!res ? <DrainLoader /> : rows.length === 0 ? (
-        <div className="panel empty"><p className="muted">Brak faktów w tym widoku.</p>{counts.do_akceptacji === 0 && counts.zatwierdzony === 0 && <Link className="link-dark" to="/produkty">Wyciągnij fakty z produktów →</Link>}</div>
+        <div className="panel empty"><p className="muted">Brak faktów w tym widoku.</p>{counts.do_akceptacji === 0 && counts.zatwierdzony === 0 && <Link className="link-dark" to="/rodziny">Wyciągnij fakty dla rodzin produktów →</Link>}</div>
       ) : (<>
         <div className="result-head">
           <span className="summary"><strong>{plN(res.total, 'fakt', 'fakty', 'faktów')}</strong>{pages > 1 && <span className="muted"> · strona {page + 1} z {pages}</span>}</span>
@@ -156,7 +177,7 @@ export default function Facts({ profile }) {
           </span>
         </div>
         {rows.map(f => (
-          <FactCard key={f.id} f={f} brandName={brandName} canApprove={canApprove} selected={sel.has(f.id)}
+          <FactCard key={f.id} f={f} brandName={brandName} skuOf={id => skus.get(id) || '…'} canApprove={canApprove} selected={sel.has(f.id)}
             onSelect={() => setSel(s => { const n = new Set(s); n.has(f.id) ? n.delete(f.id) : n.add(f.id); return n })}
             onChange={() => load()} />
         ))}

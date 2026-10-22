@@ -52,3 +52,12 @@ button.row-toggle { font: inherit; background: none; border: 0; padding: 0; curs
 button.row-toggle:hover { text-decoration: underline; }
 
 @media (max-width: 900px) { .filter-grid, .detail { grid-template-columns: 1fr; } }
+
+/* Rodziny – propozycje */
+.proposal { border: 1px solid var(--line); border-radius: var(--radius-s); padding: 10px 14px; margin-bottom: 8px; background: var(--surface); }
+.proposal.on { border-color: var(--action); box-shadow: inset 3px 0 0 var(--action); }
+.proposal-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.proposal-head input[type=checkbox] { width: auto; margin: 0; }
+.proposal .name-input { width: auto; min-width: 220px; margin: 0; padding: 5px 8px; font-weight: 600; }
+.proposal table { margin-top: 6px; }
+td.check input[type=radio] { width: auto; margin: 0; }
