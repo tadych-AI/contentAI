@@ -65,7 +65,7 @@ export default function App() {
           <Route path="opisy/:id" element={<Review profile={profile} />} />
           <Route path="tytuly" element={<Titles profile={profile} />} />
           <Route path="emag" element={<Emag profile={profile} />} />
-          <Route path="uzytkownicy" element={!profile ? null : admin ? <Users /> : <Navigate to="/" />} />
+          <Route path="uzytkownicy" element={!profile ? null : admin ? <Users profile={profile} /> : <Navigate to="/" />} />
           <Route path="konto" element={<Account profile={profile} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Route>

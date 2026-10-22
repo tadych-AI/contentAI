@@ -10,7 +10,7 @@ Adres po wdrożeniu: https://tadych-ai.github.io/contentAI/
 
 ## Co działa
 
-- logowanie, role (generujący, akceptujący, admin), zmiana hasła, nadawanie ról,
+- logowanie, role (generujący, akceptujący, admin), zmiana hasła; panel użytkowników (admin): dodawanie i usuwanie kont, nadawanie ról, ustawianie haseł – przez funkcje w bazie (hasło nie trafia do n8n ani do tabel aplikacji),
 - **Katalog Baselinkera**: lekki indeks całego katalogu (25 tys.+ produktów: SKU, EAN, nazwa, kategoria, producent, warianty, bundle), filtr wyboru (marka = producent w BL lub marka w nazwie, kategoria z podkategoriami, słowa kluczowe, słowa wykluczające, rodzaj produktu), zapisane zestawy wyboru, import zaznaczonych,
 - **Produkty w aplikacji**: pełne dane z BL (opis, parametry, pola dodatkowe, zdjęcia, skład zestawu) i uwagi do jakości danych (brak opisu/parametrów/EAN, waga zastępcza, powtórzony EAN, brak kategorii lub producenta),
 - **Rodziny produktów**: propozycje grupowania wariantów (marka + kategoria + nazwa modelu bez wymiarów, kolorów i strony; warianty z BL zawsze razem), zatwierdzanie, wariant wiodący, łączenie i rozdzielanie,
@@ -24,8 +24,8 @@ Adres po wdrożeniu: https://tadych-ai.github.io/contentAI/
 ## Uruchomienie
 
 ### 1. Supabase
-1. SQL Editor → wklej i uruchom całość pliku `001_schema.sql` (na czystym projekcie), potem kolejno `002_fakty.sql`, `003_rodziny.sql`, `004_opisy.sql`, `005_emag.sql`, `006_grafiki.sql`, `007_tytuly_zestawy.sql`.
-2. Authentication → Users → Add user (zaznacz „Auto Confirm User”). Profil tworzy się sam z rolą „generujący”.
+1. SQL Editor → wklej i uruchom całość pliku `001_schema.sql` (na czystym projekcie), potem kolejno `002_fakty.sql`, `003_rodziny.sql`, `004_opisy.sql`, `005_emag.sql`, `006_grafiki.sql`, `007_tytuly_zestawy.sql`, `008_tytuly_pl.sql`, `009_uzytkownicy.sql`.
+2. Pierwsze konto: Authentication → Users → Add user (zaznacz „Auto Confirm User”). Kolejne konta dodaje admin w aplikacji (Konfiguracja → Użytkownicy).
 3. Pierwszemu adminowi nadaj rolę w SQL Editor: `update profiles set role = 'admin' where email = 'twoj@email';`
 4. Project Settings → API Keys: skopiuj klucz **publishable/anon** (do aplikacji) i **secret** (tylko do n8n).
 
