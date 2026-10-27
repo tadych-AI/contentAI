@@ -67,10 +67,98 @@ function rdContext(fields, template, images) {
       s.MA_LI = s.LI.length > 0
       if (s.H2 || s.P || s.P_BOLD || s.LI.length || s.AKCENT) { ctx.sekcje.push(s); ctx[`${k}_IMG`] = src }
     }
+    if (sec.type === 'features') ctx.atuty = [1, 2, 3, 4, 5, 6].map(i => g(`FEAT${i}`)).filter(Boolean)
+    if (sec.type === 'why') ctx.dlaczego = [1, 2, 3, 4, 5].map(i => g(`WHY_LI${i}`)).filter(Boolean)
+    if (sec.type === 'specs') ctx.specyfikacja = Array.from({ length: 12 }, (_, i) => g(`SPEC${i + 1}`)).filter(Boolean)
+    if (sec.type === 'gallery') ctx.galeria = rdGallery(sec, images)
     if (sec.type === 'faq') ctx.faq = [1, 2, 3, 4, 5, 6].slice(0, sec.max_questions || 6).map(i => ({ NR: i, Q: g(`FAQ_Q${i}`), A: g(`FAQ_A${i}`) })).filter(x => x.Q && x.A)
   }
   ctx.MA_FAQ = ctx.faq.length > 0
   return ctx
+}
+
+// Bloki dodatkowe (oba układy): atuty ✓, „dlaczego warto”, podsumowanie, specyfikacja, galeria zdjęć
+function rdSplit(text, seps) { for (const sp of seps) { const i = text.indexOf(sp); if (i > 0 && i < 80) return [text.slice(0, i).trim(), text.slice(i + sp.length).trim()] } return ['', text] }
+function rdGallery(sec, images) { const out = []; for (let i = 1; i <= 12; i++) { const u = images ? images[`${sec.key}_${i}`] : ''; if (u) out.push(u) } return out }
+function rdExtraBlock(sec, g, images, st, esc, attr, showcase) {
+  const box = showcase ? 'background: #f5f5f5; padding: 18px 20px; margin: 18px 0' : 'margin: 24px 0'
+  const head = (t, size) => t ? `<h2 style="margin: 0 0 12px 0; font-size: ${size || st.h2_size}px; font-weight: 700; color: ${st.heading_color}; text-align: center">${esc(t)}</h2>` : ''
+  if (sec.type === 'features') {
+    const f = [1, 2, 3, 4, 5, 6].map(i => g(`FEAT${i}`)).filter(Boolean)
+    if (!f.length) return ''
+    let h = ''
+    for (let r = 0; r < f.length; r += 3) {
+      const row = f.slice(r, r + 3)
+      h += `<div style="background: #f5f5f5; padding: 14px; margin: ${r ? 10 : 18}px 0 ${r + 3 >= f.length ? 18 : 0}px 0"><table cellpadding="0" cellspacing="0" style="border-collapse: collapse; text-align: center; width: 100%"><tbody><tr>` +
+        row.map(x => `<td style="width: ${(100 / row.length).toFixed(2)}%; padding: 8px; vertical-align: middle"><strong style="color: ${st.accent_color}">✓</strong> ${esc(x)}</td>`).join('') + '</tr></tbody></table></div>'
+    }
+    return h
+  }
+  if (sec.type === 'why') {
+    const li = [1, 2, 3, 4, 5].map(i => g(`WHY_LI${i}`)).filter(Boolean)
+    if (!li.length) return ''
+    return `<div style="${box}">${head(g('WHY_H2'))}<ul style="margin: 0 auto; max-width: 980px; padding-left: 18px; text-align: left">` +
+      li.map(x => { const [a, b] = rdSplit(x, [' – ', ' - ', ': ']); return `<li style="margin: 0 0 4px 0">${a ? `<strong>${esc(a)}</strong> – ` : ''}${esc(b)}</li>` }).join('') + '</ul></div>'
+  }
+  if (sec.type === 'closing') {
+    if (!g('CLOSING_H2') && !g('CLOSING_P')) return ''
+    return `<div style="padding: 18px 20px; margin: 24px 0; text-align: center">${head(g('CLOSING_H2'))}<p style="margin: 0 auto; max-width: 980px">${esc(g('CLOSING_P'))}</p></div>`
+  }
+  if (sec.type === 'specs') {
+    const sp = Array.from({ length: 12 }, (_, i) => g(`SPEC${i + 1}`)).filter(Boolean)
+    if (!sp.length) return ''
+    return `<hr style="border: none; height: 1px; background: #e5e7eb; margin: 8px 0 16px 0">${head(g('SPECS_H2'))}<div style="background: #f8fafc; border: 1px solid #e5e7eb; padding: 16px 18px; margin: 0 0 18px 0"><ul style="margin: 0; padding-left: 18px; text-align: left">` +
+      sp.map(x => { const [a, b] = rdSplit(x, [': ']); return `<li>${a ? `${esc(a)}: <strong>${esc(b)}</strong>` : esc(b)}</li>` }).join('') + '</ul></div>'
+  }
+  if (sec.type === 'gallery') {
+    const im = rdGallery(sec, images)
+    if (!im.length) return ''
+    return `<div style="${showcase ? 'background: #f5f5f5; padding: 20px; margin: 18px 0; ' : 'margin: 24px 0; '}text-align: center">` + im.map((u, i) => `<p style="margin: 0 0 ${i === im.length - 1 ? 0 : 12}px 0"><img alt="${attr(g('HERO_H1'))}" src="${attr(u)}" style="max-width: 100%; height: auto"></p>`).join('') + '</div>'
+  }
+  return ''
+}
+
+// Układ „wizytówka”: baner, tytuł między liniami, atuty w kafelkach, „dlaczego warto”, sekcje naprzemiennie zdjęcie | tekst, podsumowanie, specyfikacja, FAQ, galeria
+function rdShowcase(fields, template, images, st) {
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const attr = s => esc(s).replace(/"/g, '&quot;')
+  const g = k => String(fields?.[k] ?? '').trim()
+  const srcOf = sec => images ? (images[sec.key] || '') : (['static', 'library'].includes(sec.image_source || 'static') ? (sec.image_url || '') : '')
+  const img = (src, alt) => src ? `<img alt="${attr(alt)}" src="${attr(src)}" style="max-width: 100%; height: auto">` : ''
+  const line = m => `<hr style="border: none; height: 1px; background: #e5e7eb; margin: ${m}">`
+  const ht = st.hero_tag === 'h2' ? 'h2' : 'h1'
+  let h = `<div style="max-width: ${Math.max(st.max_width, 1100)}px; margin: 0 auto; padding: 20px 0; font-family: Arial, Helvetica, sans-serif; color: ${st.text_color}; font-size: ${st.font_size}px; line-height: ${st.line_height}; background: #fff; text-align: center">`
+  let n = 0
+  for (const sec of (template?.sections || []).filter(s => s && s.enabled !== false)) {
+    const k = sec.key
+    if (sec.type === 'hero') {
+      const src = srcOf(sec)
+      if (src) h += `<p style="margin: 0 0 16px 0">${img(src, g('HERO_IMG_ALT'))}</p>`
+      h += line('10px 0 20px 0') + `<${ht} style="margin: 0 0 12px 0; font-size: ${st.h1_size}px; font-weight: 700; color: ${st.heading_color}">${esc(g('HERO_H1'))}</${ht}>` + line('12px 0 20px 0')
+      if (g('HERO_LEAD')) h += `<p style="margin: 0 auto 20px auto; max-width: 980px">${esc(g('HERO_LEAD'))}</p>`
+    } else if (sec.type === 'content') {
+      const lis = sec.list === false ? [] : [1, 2, 3, 4, 5].map(b => g(`${k}_LI${b}`)).filter(Boolean)
+      const H2 = g(`${k}_H2`), P = g(`${k}_P`), PB = sec.bold === false ? '' : g(`${k}_P_BOLD`), AK = sec.accent ? g(`${k}_AKCENT`) : ''
+      if (!H2 && !P && !PB && !lis.length && !AK) continue
+      let text = (H2 ? `<h3 style="margin: 0 0 10px 0; font-size: ${Math.max(st.h2_size - 2, 16)}px; color: ${st.heading_color}"><strong>${esc(H2)}</strong></h3>` : '')
+      if (P || PB) text += `<p style="margin: 0 0 ${lis.length || AK ? 10 : 0}px 0">${esc(P)}${PB ? ' <strong>' + esc(PB) + '</strong>' : ''}</p>`
+      if (lis.length) text += '<ul style="margin: 0 0 ' + (AK ? 10 : 0) + 'px 0; padding-left: 18px; text-align: left">' + lis.map(l => `<li>${esc(l)}</li>`).join('') + '</ul>'
+      if (AK) text += `<p style="margin: 0; color: ${st.accent_color}"><strong>${esc(AK)}</strong></p>`
+      const src = srcOf(sec)
+      if (!src) { h += `<div style="background: #f5f5f5; padding: 20px; margin: 18px 0">${text}</div>`; continue }
+      const pic = `<td style="width: 50%; text-align: center; padding: 10px; vertical-align: middle">${img(src, g(`${k}_IMG_ALT`))}</td>`
+      const txt = `<td style="width: 50%; text-align: center; padding: 10px; vertical-align: middle">${text}</td>`
+      h += `<div style="background: #f5f5f5; padding: 20px; margin: 18px 0"><table cellpadding="0" cellspacing="0" style="border-collapse: collapse; width: 100%"><tbody><tr>${n % 2 === 0 ? pic + txt : txt + pic}</tr></tbody></table></div>`
+      n++
+    } else if (sec.type === 'faq') {
+      const qs = [1, 2, 3, 4, 5, 6].slice(0, sec.max_questions || 6).map(i => ({ q: g(`FAQ_Q${i}`), a: g(`FAQ_A${i}`) })).filter(x => x.q && x.a)
+      if (!qs.length) continue
+      h += line('8px 0 16px 0') + `<h2 style="margin: 0 0 12px 0; font-size: ${st.h2_size}px; color: ${st.heading_color}"><strong>${esc(g('FAQ_H2'))}</strong></h2>` + line('0 0 16px 0')
+      h += '<div style="background: #f8fafc; border: 1px solid #e5e7eb; padding: 16px 18px; margin: 0 0 18px 0"><ul style="margin: 0; padding-left: 18px; text-align: left">' +
+        qs.map((x, i) => `<li style="margin: ${i ? 10 : 0}px 0 0 0"><strong>${esc(x.q)}</strong><br>${esc(x.a)}</li>`).join('') + '</ul></div>'
+    } else h += rdExtraBlock(sec, g, images, st, esc, attr, true)
+  }
+  return h + '</div>'
 }
 
 function renderDescription(fields, template, images) {
@@ -85,6 +173,7 @@ function renderDescription(fields, template, images) {
   const hr = '<hr style="border: none; margin: 32px auto">'
   const h2 = (text, bottom) => `<h2 style="font-size: ${st.h2_size}px; color: ${st.heading_color}; margin: 0 0 ${bottom}px 0">${esc(text)}</h2>`
   const ht = st.hero_tag === 'h2' ? 'h2' : 'h1'
+  if (st.layout === 'showcase') { const hs = rdShowcase(fields, template, images, st); return (out.allowed_tags || out.keep_styles === false || out.images === false) ? rdSanitize(hs, out) : hs }
   let h = `<div style="max-width: ${st.max_width}px; margin: 0 auto; color: ${st.text_color}; font-size: ${st.font_size}px; line-height: ${st.line_height}">`
   for (const sec of (template?.sections || []).filter(s => s && s.enabled !== false)) {
     const k = sec.key
@@ -101,6 +190,8 @@ function renderDescription(fields, template, images) {
       if (lis.length) h += `<ul style="margin: 0 0 ${AK ? 10 : 14}px 0; padding-left: 18px">` + lis.map(l => `<li>${esc(l)}</li>`).join('') + '</ul>'
       if (AK) h += `<p style="margin: 0 0 14px 0; color: ${st.accent_color}"><strong>${esc(AK)}</strong></p>`
       h += img(srcOf(sec), g(`${k}_IMG_ALT`)) + '</div>'
+    } else if (['features', 'why', 'closing', 'specs', 'gallery'].includes(sec.type)) {
+      h += rdExtraBlock(sec, g, images, st, esc, attr, false)
     } else if (sec.type === 'faq') {
       const qs = [1, 2, 3, 4, 5, 6].slice(0, sec.max_questions || 6).map(i => ({ q: g(`FAQ_Q${i}`), a: g(`FAQ_A${i}`) })).filter(x => x.q && x.a)
       if (!qs.length) continue
@@ -148,6 +239,10 @@ export function templateFields(template) {
       if (sec.accent) keys.push(`${sec.key}_AKCENT`)
       if (hasImage(sec)) keys.push(`${sec.key}_IMG_ALT`)
     }
+    if (sec.type === 'features') keys.push(...[1, 2, 3, 4, 5, 6].map(i => `FEAT${i}`))
+    if (sec.type === 'why') keys.push('WHY_H2', ...[1, 2, 3, 4, 5].map(i => `WHY_LI${i}`))
+    if (sec.type === 'closing') keys.push('CLOSING_H2', 'CLOSING_P')
+    if (sec.type === 'specs') keys.push('SPECS_H2', ...Array.from({ length: 12 }, (_, i) => `SPEC${i + 1}`))
     if (sec.type === 'faq') { keys.push('FAQ_H2'); for (let i = 1; i <= (sec.max_questions || 6); i++) keys.push(`FAQ_Q${i}`, `FAQ_A${i}`) }
   }
   return keys
@@ -158,12 +253,22 @@ const hasImage = sec => { const src = sec.image_source || 'static'; return src =
 // Źródła grafik: zdjęcie produktu z BL, grafika z biblioteki (wybrana albo grafika marki wg roli), stały adres URL albo brak
 export const IMAGE_SOURCES = { product: 'zdjęcie produktu z Baselinkera', library: 'grafika z biblioteki', brand: 'grafika marki z biblioteki (wg roli)', static: 'stały adres URL', none: 'bez grafiki' }
 
+// „2-5, 8” → [2, 3, 4, 5, 8]
+export function parsePositions(txt) { const out = []; for (const part of String(txt || '').split(/[,;\s]+/)) { const m = part.match(/^(\d+)(?:-(\d+))?$/); if (!m) continue; const a = Number(m[1]), b = Number(m[2] || m[1]); for (let i = Math.min(a, b); i <= Math.max(a, b) && out.length < 30; i++) out.push(i) } return [...new Set(out)] }
+
 // Dobór grafik dla konkretnego produktu (wariantu); media = wiersze media_library, brandId = marka produktu/rodziny
 export function resolveImages(template, product = {}, { media = [], brandId = null } = {}) {
   const out = {}
   const imgs = [...(product.images || [])].sort((a, b) => a.position - b.position)
   const brand = brandId || product.brand_id || null
-  for (const sec of (template?.sections || []).filter(s => s && s.enabled !== false && s.type !== 'faq')) {
+  for (const sec of (template?.sections || []).filter(s => s && s.enabled !== false && s.type === 'gallery')) {
+    // galeria: zdjęcia produktu z podanych pozycji (np. „5-10”) albo wybrane ręcznie dla SKU (adresy rozdzielone nową linią)
+    const pos = parsePositions(sec.positions || '2-8')
+    const choice = product?.image_choice || {}
+    const picked = Object.prototype.hasOwnProperty.call(choice, sec.key) ? String(choice[sec.key] || '').split('\n').filter(Boolean) : pos.map(n => (imgs.find(i => i.position === n) || imgs[n - 1] || {}).url).filter(Boolean)
+    picked.slice(0, 12).forEach((u, i) => { out[`${sec.key}_${i + 1}`] = u })
+  }
+  for (const sec of (template?.sections || []).filter(s => s && s.enabled !== false && s.type !== 'faq' && s.type !== 'gallery' && !['features', 'why', 'closing', 'specs'].includes(s.type))) {
     const choice = product?.image_choice || {}
     if (Object.prototype.hasOwnProperty.call(choice, sec.key)) { if (choice[sec.key]) out[sec.key] = choice[sec.key]; continue }   // wybór ręczny dla SKU
     const src = sec.image_source || 'static'

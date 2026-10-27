@@ -28,7 +28,8 @@ export default function ImageSlots({ d, tpl, canEdit, onSaved }) {
   if (!tpl) return <p className="muted">Brak szablonu opisu.</p>
   if (!p) return <p className="muted">{msg?.text || 'Wczytywanie zdjęć…'}</p>
 
-  const slots = (tpl.sections || []).filter(s => s && s.enabled !== false && s.type !== 'faq' && (s.image_source || 'static') !== 'none')
+  const slots = (tpl.sections || []).filter(s => s && s.enabled !== false && ['hero', 'content'].includes(s.type) && (s.image_source || 'static') !== 'none')
+  const gallery = (tpl.sections || []).find(s => s && s.enabled !== false && s.type === 'gallery')
   const imgs = [...(p.images || [])].sort((a, b) => a.position - b.position)
   const current = resolveImages(tpl, p, { media, brandId: p.brand_id })
   const choice = p.image_choice || {}
@@ -84,6 +85,22 @@ export default function ImageSlots({ d, tpl, canEdit, onSaved }) {
           </div>
         )
       })}
+      {gallery && (() => {
+        const own = Object.prototype.hasOwnProperty.call(choice, gallery.key)
+        const sel = Object.keys(current).filter(k => k.startsWith(`${gallery.key}_`)).sort((a, b) => Number(a.split('_').pop()) - Number(b.split('_').pop())).map(k => current[k])
+        const toggle = url => { const next = sel.includes(url) ? sel.filter(u => u !== url) : [...sel, url]; choose(gallery.key, next.join('\n')) }
+        return (
+          <div className="slot panel">
+            <strong>Galeria zdjęć</strong>
+            <span className="muted small" style={{ display: 'block' }}>{own ? 'wybrane ręcznie' : `wg szablonu: zdjęcia nr ${gallery.positions || '2-8'} z BL`} · zaznaczone: {sel.length} · kolejność = kolejność klikania</span>
+            {canEdit && <div className="slot-thumbs">{imgs.map(im => { const i = sel.indexOf(im.url); return (
+              <button key={im.url} type="button" className={'slot-thumb' + (i >= 0 ? ' on' : '')} disabled={busy} onClick={() => toggle(im.url)} title={`Zdjęcie nr ${im.position}`}>
+                <img src={im.url} alt={`Zdjęcie nr ${im.position}`} loading="lazy" /><span>{i >= 0 ? `✓ ${i + 1}` : im.position}</span>
+              </button>) })}</div>}
+            {canEdit && own && <button className="link-dark" disabled={busy} onClick={() => choose(gallery.key, null)}>Przywróć z szablonu</button>}
+          </div>
+        )
+      })()}
       {msg && <p className={msg.type} role="status">{msg.text}</p>}
     </div>
   )

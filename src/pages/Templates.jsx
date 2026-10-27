@@ -8,6 +8,16 @@ import { ROLE_SUGGESTIONS } from '../media.js'
 import DrainLoader from '../components/DrainLoader.jsx'
 
 const STATUS = { aktywny: 'aktywny', szkic: 'szkic', archiwalny: 'archiwalny' }
+// typy sekcji szablonu (hero i FAQ są stałe; pozostałe można dodawać)
+const SECTION_TYPES = {
+  hero: { label: 'Nagłówek (HERO)' }, faq: { label: 'FAQ' },
+  content: { label: 'Sekcja', add: 'Sekcja treści (tekst + zdjęcie)' },
+  features: { label: 'Atuty w kafelkach ✓', add: 'Atuty w kafelkach ✓', help: '6 krótkich atutów (2–5 słów) w szarych kafelkach po 3 w rzędzie.' },
+  why: { label: 'Dlaczego warto', add: 'Dlaczego warto (lista)', help: 'Nagłówek i 5 punktów „Hasło – wyjaśnienie” (hasło pogrubione).' },
+  closing: { label: 'Podsumowanie', add: 'Podsumowanie', help: 'Wyśrodkowany nagłówek z nazwą modelu i 2–3 zdania podsumowania.' },
+  specs: { label: 'Specyfikacja', add: 'Specyfikacja (parametry)', help: 'Lista do 12 parametrów „Nazwa: wartość” z danych Baselinkera, przetłumaczona na język rynku.' },
+  gallery: { label: 'Galeria zdjęć', add: 'Galeria zdjęć', help: 'Zdjęcia produktu jedno pod drugim, bez tekstu. Na etapie weryfikacji można je zmienić dla każdego SKU.' },
+}
 const newKey = secs => { let i = 1; while (secs.some(s => s.key === `S${i}`)) i++; return `S${i}` }
 
 // Przykładowa treść do podglądu (prawdziwą wygeneruje AI w języku rynku)
@@ -19,12 +29,18 @@ function sampleFields(template) {
     else if (/_H2$/.test(k)) f[k] = k === 'FAQ_H2' ? 'Najczęstsze pytania' : `Nagłówek sekcji ${k.split('_')[0]}`
     else if (/_P$/.test(k)) f[k] = 'Akapit sekcji – rzeczowy opis oparty wyłącznie na zatwierdzonych faktach.'
     else if (/_P_BOLD$/.test(k)) f[k] = 'Pogrubione zdanie z najmocniejszym argumentem.'
+    else if (/^WHY_LI\d$/.test(k)) f[k] = `Hasło ${k.slice(-1)} – jedno zdanie wyjaśnienia opartego na faktach`
     else if (/_LI\d$/.test(k)) f[k] = `Punkt listy ${k.slice(-1)}`
     else if (/_AKCENT$/.test(k)) f[k] = 'Wyróżnik sekcji – krótkie zdanie.'
     else if (/^FAQ_Q/.test(k)) f[k] = `Pytanie kupującego ${k.slice(5)}?`
     else if (/^FAQ_A/.test(k)) f[k] = 'Krótka odpowiedź oparta na faktach.'
     else if (/_IMG_ALT$/.test(k)) f[k] = 'Opis obrazka'
+    else if (/^FEAT\d$/.test(k)) f[k] = ['Akryl sanitarny', 'Pojemność 190 l', 'Wolnostojąca', 'Syfon w zestawie', 'Łatwe czyszczenie', 'Owalny kształt'][Number(k.slice(4)) - 1]
+    else if (/^WHY_LI\d$/.test(k)) f[k] = `Hasło ${k.slice(-1)} – jedno zdanie wyjaśnienia opartego na faktach`
+    else if (k === 'CLOSING_P') f[k] = 'Dwa–trzy zdania podsumowania bez nowych informacji.'
+    else if (/^SPEC\d+$/.test(k)) f[k] = Number(k.slice(4)) <= 6 ? ['Marka: Besco', 'Model: Navia', 'Wymiary: 160 x 80 cm', 'Materiał: akryl', 'Kolor: biały', 'Pojemność: 235 l'][Number(k.slice(4)) - 1] : ''
   }
+  f.WHY_H2 = f.WHY_H2 && 'Dlaczego warto wybrać tę wannę?'; f.CLOSING_H2 = f.CLOSING_H2 && 'Navia: podsumowanie'; f.SPECS_H2 = f.SPECS_H2 && 'Specyfikacja'
   return f
 }
 
@@ -37,11 +53,11 @@ function SectionRow({ sec, idx, count, onChange, onMove, onRemove, lib }) {
   return (
     <div className="sec-row panel" style={{ padding: '12px 14px', marginBottom: 8 }}>
       <div className="sec-head" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label className="check"><input type="checkbox" checked={sec.enabled !== false} onChange={e => set({ enabled: e.target.checked })} /> <strong>{sec.type === 'hero' ? 'Nagłówek (HERO)' : sec.type === 'faq' ? 'FAQ' : `Sekcja ${sec.key}`}</strong></label>
+        <label className="check"><input type="checkbox" checked={sec.enabled !== false} onChange={e => set({ enabled: e.target.checked })} /> <strong>{SECTION_TYPES[sec.type]?.label || `Sekcja ${sec.key}`}{sec.type === 'content' ? ` ${sec.key}` : ''}</strong></label>
         <span style={{ marginLeft: 'auto' }} className="row-form">
           <button className="link-dark" disabled={idx === 0} onClick={() => onMove(-1)} aria-label="Przesuń wyżej">↑</button>
           <button className="link-dark" disabled={idx === count - 1} onClick={() => onMove(1)} aria-label="Przesuń niżej">↓</button>
-          {sec.type === 'content' && <button className="link-dark danger" onClick={onRemove}>Usuń</button>}
+          {!['hero', 'faq'].includes(sec.type) && <button className="link-dark danger" onClick={onRemove}>Usuń</button>}
         </span>
       </div>
       {sec.type === 'content' && <label>Temat sekcji (dla AI – o czym pisać)<input value={sec.topic || ''} onChange={e => set({ topic: e.target.value })} /></label>}
@@ -53,7 +69,9 @@ function SectionRow({ sec, idx, count, onChange, onMove, onRemove, lib }) {
         </div>
       )}
       {sec.type === 'faq' && <label style={{ maxWidth: 200 }}>Liczba pytań<input type="number" min="1" max="6" value={sec.max_questions || 4} onChange={e => set({ max_questions: Math.min(6, Math.max(1, Number(e.target.value) || 4)) })} /></label>}
-      {sec.type !== 'faq' && (
+      {SECTION_TYPES[sec.type]?.help && <p className="muted small" style={{ margin: '6px 0 0' }}>{SECTION_TYPES[sec.type].help}</p>}
+      {sec.type === 'gallery' && <label style={{ maxWidth: 360 }}>Pozycje zdjęć z Baselinkera (np. 2-8 albo 5, 6, 9)<input value={sec.positions || ''} placeholder="2-8" onChange={e => set({ positions: e.target.value })} /></label>}
+      {['hero', 'content'].includes(sec.type) && (
         <div className="filter-grid" style={{ marginTop: 4 }}>
           <label>Grafika<select value={sec.image_source || 'none'} onChange={e => set({ image_source: e.target.value })}>{Object.entries(IMAGE_SOURCES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
           {src === 'product' && <label>Pozycja zdjęcia w Baselinkerze (1–16)<input type="number" min="1" max="16" value={sec.image_position || 1} onChange={e => set({ image_position: Number(e.target.value) || 1 })} /></label>}
@@ -117,12 +135,20 @@ function Editor({ tpl, dicts, sample, canEdit, onSaved, onClose, lib }) {
             onMove={d => { const a = [...secs]; const [x] = a.splice(i, 1); a.splice(i + d, 0, x); setSecs(a) }}
             onRemove={() => setSecs(secs.filter((_, j) => j !== i))} lib={lib} />
         ))}
-        <button className="btn ghost" onClick={() => { const faqAt = secs.findIndex(s => s.type === 'faq'); const n = { key: newKey(secs), type: 'content', enabled: true, topic: '', image_source: 'none', list: true, bold: false, accent: false }; const a = [...secs]; a.splice(faqAt < 0 ? a.length : faqAt, 0, n); setSecs(a) }}>+ Dodaj sekcję</button>
+        <label style={{ maxWidth: 360 }}>+ Dodaj sekcję<select value="" onChange={e => { const type = e.target.value; if (!type) return
+          const key = type === 'content' ? newKey(secs) : { features: 'FEATURES', why: 'WHY', closing: 'CLOSING', specs: 'SPECS', gallery: 'GALLERY' }[type]
+          if (secs.some(x => x.key === key)) return
+          const n = type === 'content' ? { key, type, enabled: true, topic: '', image_source: 'none', list: true, bold: false, accent: false } : { key, type, enabled: true, image_source: 'none', ...(type === 'gallery' ? { positions: '2-8' } : {}) }
+          const faqAt = secs.findIndex(x => x.type === 'faq'); const a = [...secs]; a.splice(type === 'gallery' || faqAt < 0 ? a.length : faqAt, 0, n); setSecs(a) }}>
+          <option value="">wybierz rodzaj…</option>
+          {Object.entries(SECTION_TYPES).filter(([k, v]) => v.add && (k === 'content' || !secs.some(x => x.type === k))).map(([k, v]) => <option key={k} value={k}>{v.add}</option>)}
+        </select></label>
 
         <div className="panel" style={{ marginTop: 18 }}>
           <h2>Wygląd i format</h2>
           <div className="filter-grid">
             <label>Format wyjściowy<select value={out.mode === 'custom' && out.html && !out.images ? 'kaufland' : out.mode === 'custom' ? 'custom' : 'standard'} onChange={e => setSt({ output: { ...OUTPUT_PRESETS[e.target.value].output } })}>{Object.entries(OUTPUT_PRESETS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></label>
+            <label>Układ<select value={st.layout || 'standard'} onChange={e => setSt({ layout: e.target.value })}><option value="standard">standardowy (sekcje jedna pod drugą)</option><option value="showcase">wizytówka (naprzemiennie zdjęcie | tekst, kafelki)</option></select></label>
             <label>Znacznik nagłówka<select value={st.hero_tag} onChange={e => setSt({ hero_tag: e.target.value })}><option value="h1">h1</option><option value="h2">h2</option></select></label>
             <label>Kolor nagłówków<input type="color" value={st.heading_color} onChange={e => setSt({ heading_color: e.target.value })} /></label>
             <label>Kolor wyróżnień<input type="color" value={st.accent_color} onChange={e => setSt({ accent_color: e.target.value })} /></label>

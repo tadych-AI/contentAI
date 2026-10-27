@@ -62,6 +62,10 @@ function sectionBlocks(template) {
     if (s.type === 'hero') out.push({ key: 'HERO', label: 'Nagłówek i lead', keys: ['HERO_H1', 'HERO_LEAD', 'HERO_IMG_ALT'] })
     if (s.type === 'content') out.push({ key: s.key, label: s.topic || s.key, keys: [`${s.key}_H2`, `${s.key}_P`, `${s.key}_P_BOLD`, ...[1, 2, 3, 4, 5].map(i => `${s.key}_LI${i}`), `${s.key}_AKCENT`, `${s.key}_IMG_ALT`] })
     if (s.type === 'faq') out.push({ key: 'FAQ', label: 'FAQ', keys: ['FAQ_H2', ...[1, 2, 3, 4, 5, 6].flatMap(i => [`FAQ_Q${i}`, `FAQ_A${i}`])] })
+    if (s.type === 'features') out.push({ key: s.key, label: 'Atuty w kafelkach', keys: [1, 2, 3, 4, 5, 6].map(i => `FEAT${i}`) })
+    if (s.type === 'why') out.push({ key: s.key, label: 'Dlaczego warto', keys: ['WHY_H2', ...[1, 2, 3, 4, 5].map(i => `WHY_LI${i}`)] })
+    if (s.type === 'closing') out.push({ key: s.key, label: 'Podsumowanie', keys: ['CLOSING_H2', 'CLOSING_P'] })
+    if (s.type === 'specs') out.push({ key: s.key, label: 'Specyfikacja', keys: ['SPECS_H2', ...Array.from({ length: 12 }, (_, i) => `SPEC${i + 1}`)] })
   }
   return out
 }
@@ -70,11 +74,11 @@ function Fields({ keys, data }) {
   const v = k => String(data?.[k] ?? '').trim()
   const items = keys.filter(v)
   if (!items.length) return <p className="muted small">Sekcja pusta – brak pasujących faktów.</p>
-  const lis = items.filter(k => /_LI\d$/.test(k))
+  const lis = items.filter(k => /_LI\d$|^FEAT\d$|^SPEC\d+$/.test(k))
   return (
     <div className="fields">
       {items.map(k => {
-        if (/_LI\d$/.test(k)) return k === lis[0] ? <ul key={k}>{lis.map(x => <li key={x}>{v(x)}</li>)}</ul> : null
+        if (/_LI\d$|^FEAT\d$|^SPEC\d+$/.test(k)) return k === lis[0] ? <ul key={k}>{lis.map(x => <li key={x}>{v(x)}</li>)}</ul> : null
         if (/_H2$|_H1$|^FAQ_Q|^FAQ_H2|^TITLE$/.test(k)) return <p key={k} className="f-head">{v(k)}</p>
         if (/_IMG_ALT$/.test(k)) return <p key={k} className="muted small">ALT obrazka: {v(k)}</p>
         if (/_P_BOLD$|_AKCENT$/.test(k)) return <p key={k}><strong>{v(k)}</strong></p>
