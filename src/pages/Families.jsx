@@ -205,13 +205,14 @@ export default function Families({ profile }) {
     try {
       const others = fs.slice(1).map(f => f.id)
       let r = await supabase.from('products').update({ family_id: target.id }).in('family_id', others); if (r.error) throw r.error
+      r = await supabase.from('descriptions').update({ family_id: target.id }).in('family_id', others); if (r.error) throw r.error
       r = await supabase.from('product_families').delete().in('id', others); if (r.error) throw r.error
       r = await supabase.from('product_families').update({ grouping: { ...(target.grouping || {}), rule: 'recznie', merged: fs.map(f => f.name) } }).eq('id', target.id); if (r.error) throw r.error
       setJob({ ok: `Połączono w „${target.name}”.` }); setSel(new Set()); load()
     } catch (e) { setJob({ error: plError(e.message) }) }
   }
   async function bulkDissolve() {
-    if (!confirm(`Rozwiązać ${plN(sel.size, 'rodzinę', 'rodziny', 'rodzin')}? Produkty wrócą do puli bez rodziny, fakty rodzin (poza faktami marki) zostaną usunięte.`)) return
+    if (!confirm(`Rozwiązać ${plN(sel.size, 'rodzinę', 'rodziny', 'rodzin')}? Produkty wrócą do puli bez rodziny, fakty rodzin (poza faktami marki) zostaną usunięte. Opisy zostają przy produktach – po utworzeniu nowej rodziny wygenerujesz nowy opis bazowy.`)) return
     setJob({ busy: true, progress: 'Rozwiązywanie…' })
     const r = await supabase.from('product_families').delete().in('id', [...sel])
     setJob(r.error ? { error: plError(r.error.message) } : { ok: `Rozwiązano ${plN(sel.size, 'rodzinę', 'rodziny', 'rodzin')}.` }); setSel(new Set()); load()

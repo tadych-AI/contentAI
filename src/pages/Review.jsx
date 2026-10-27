@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase, plError, fetchAll } from '../supabase.js'
 import { regenerateSections, generateVariants } from '../gen.js'
 import DrainLoader from '../components/DrainLoader.jsx'
+import ImageSlots from '../components/ImageSlots.jsx'
 
 const STATUS = { generowanie: 'w trakcie', do_weryfikacji: 'do weryfikacji', poprawki: 'poprawiony', zaakceptowany: 'zaakceptowany', opublikowany: 'opublikowany', blad: 'błąd', do_generacji: 'do generacji' }
 const FILTERS = [['do_weryfikacji', 'Do weryfikacji'], ['zaakceptowany', 'Zaakceptowane'], ['blad', 'Błędy'], ['wszystkie', 'Wszystkie']]
@@ -177,6 +178,7 @@ function ReviewDetail({ id, profile }) {
             <div className="tabs" role="tablist">
               <button role="tab" aria-selected={view === 'sekcje'} className={view === 'sekcje' ? 'tab on' : 'tab'} onClick={() => setView('sekcje')}>Sekcje i tłumaczenie</button>
               <button role="tab" aria-selected={view === 'podglad'} className={view === 'podglad' ? 'tab on' : 'tab'} onClick={() => setView('podglad')}>Podgląd opisu</button>
+              <button role="tab" aria-selected={view === 'grafiki'} className={view === 'grafiki' ? 'tab on' : 'tab'} onClick={() => setView('grafiki')}>Grafiki</button>
             </div>
             <div className="review-actions">
               {d.html && <button className="btn ghost" onClick={() => navigator.clipboard.writeText(d.html)}>Kopiuj HTML</button>}
@@ -206,7 +208,12 @@ function ReviewDetail({ id, profile }) {
             </div>
           )}
 
-          {view === 'podglad' ? <div className="preview-frame" dangerouslySetInnerHTML={{ __html: d.html || '' }} /> : (
+          {view === 'grafiki' ? (
+            <div className="images-view">
+              <ImageSlots d={d} tpl={tpl} canEdit={['do_weryfikacji', 'blad', 'poprawki'].includes(d.status) || (d.status === 'zaakceptowany' && canApprove)} onSaved={load} />
+              <div className="preview-frame" dangerouslySetInnerHTML={{ __html: d.html || '' }} />
+            </div>
+          ) : view === 'podglad' ? <div className="preview-frame" dangerouslySetInnerHTML={{ __html: d.html || '' }} /> : (
             <>
               <div className="review-grid head"><div /><div>Oryginał</div><div>Tłumaczenie kontrolne (PL)</div><div>Uwagi</div></div>
               {blocks.map(b => (

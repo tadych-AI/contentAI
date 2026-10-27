@@ -37,7 +37,7 @@ export async function buildContext(familyId, channelId) {
     supabase.from('channels').select('*').eq('id', channelId).single(),
     family.brand_id ? supabase.from('brands').select('id, name').eq('id', family.brand_id).single() : Promise.resolve({ data: null }),
     supabase.from('templates').select('*').eq('channel_id', channelId).eq('status', 'aktywny'),
-    supabase.from('products').select('id, sku, name, features, images, is_bundle, bundle_items').eq('family_id', familyId),
+    supabase.from('products').select('id, sku, name, features, images, image_choice, is_bundle, bundle_items').eq('family_id', familyId),
     supabase.from('kb_facts').select('id, content, level, variant_ids').eq('status', 'zatwierdzony')
       .or(family.brand_id ? `family_id.eq.${familyId},and(level.eq.marka,brand_id.eq.${family.brand_id})` : `family_id.eq.${familyId}`),
     supabase.from('keyword_banks').select('*'),

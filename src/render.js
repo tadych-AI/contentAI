@@ -164,6 +164,8 @@ export function resolveImages(template, product = {}, { media = [], brandId = nu
   const imgs = [...(product.images || [])].sort((a, b) => a.position - b.position)
   const brand = brandId || product.brand_id || null
   for (const sec of (template?.sections || []).filter(s => s && s.enabled !== false && s.type !== 'faq')) {
+    const choice = product?.image_choice || {}
+    if (Object.prototype.hasOwnProperty.call(choice, sec.key)) { if (choice[sec.key]) out[sec.key] = choice[sec.key]; continue }   // wybór ręczny dla SKU
     const src = sec.image_source || 'static'
     if (src === 'none') continue
     if (src === 'static' || src === 'library') { if (sec.image_url) out[sec.key] = sec.image_url; continue }
