@@ -135,14 +135,20 @@ function FamilyPlanSummary({ plan, reg, size }) {
   if (size < 2) return <span className="muted">—</span>
   if (!plan) return <span className="muted">uzupełnij charakterystyki</span>
   const live = reg.filter(r => r.status !== 'nieaktualna')
-  if (plan.mode === 'osobno') return <span className="hint-inline" title={plan.why}>nie połączy się – produkty osobno</span>
+  if (plan.mode === 'osobno') return <span className="hint-inline" title={[plan.why, ...(plan.details || []).map(x => `${x.type}: ${x.text}`)].join('\n')}>nie połączy się – rozwiń rodzinę, aby zobaczyć powód</span>
   if (plan.mode === 'cala') return <span>{live[0] ? <strong className="mono">{famNo(live[0])}</strong> : 'nowa'} · {plan.groups[0].selector.map(x => x.name).join(' + ')}</span>
   return <span>{plan.groups.filter(g => g.type).length} rodziny wg: {SPLIT_LABEL[plan.split_key]} {live.length ? <span className="mono">({live.map(famNo).join(', ')})</span> : ''}</span>
 }
 function FamilyPlan({ plan, reg, skuOf }) {
   if (!plan) return <p className="muted small">Jak eMAG połączy warianty – widoczne po uzupełnieniu charakterystyk wszystkich wariantów.</p>
   if (plan.mode === 'jeden') return null
-  if (plan.mode === 'osobno') return <p className="hint small">{plan.why}</p>
+  if (plan.mode === 'osobno') return (
+    <div className="family-plan">
+      <p className="hint small" style={{ margin: '4px 0' }}><strong>Warianty nie połączą się w eMAG</strong> – {plan.why}.</p>
+      {plan.details?.length > 0 && <><p className="small" style={{ margin: '4px 0' }}>Najbliższe typy rodziny eMAG i co blokuje połączenie (uzupełnij lub popraw charakterystyki poniżej):</p>
+        <ul className="small" style={{ margin: '0 0 8px', paddingLeft: 18 }}>{plan.details.map(x => <li key={x.type}><strong>{x.type}</strong>: {x.text}</li>)}</ul></>}
+    </div>
+  )
   const rowFor = g => reg.find(r => r.split_value === g.split_value && r.status !== 'nieaktualna')
   return (
     <div className="family-plan">

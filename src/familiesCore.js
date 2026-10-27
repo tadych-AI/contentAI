@@ -68,6 +68,14 @@ export function variantAttrs(name) {
   return { wymiar: d ? `${d[1]}x${d[2]}${d[3] ? 'x' + d[3] : ''}`.replace(/,/g, '.') : null, kolor: product, kolor_akcesoriow: accessory, strona: side }
 }
 
+// „wersja” wariantu w rodzinie: nazwa bez wymiarów, kolorów, strony i liczb (zostają słowa typu „obudowa”, „syfon”, „zestaw”)
+export function versionKey(name) {
+  let x = ' ' + norm(name) + ' '
+  x = x.replace(new RegExp(DIMS_RX.source, 'gi'), ' ')
+  for (const [, re] of [...COLORS, ...SIDES]) x = x.replace(new RegExp(re.source, re.flags.includes('u') ? 'giu' : 'gi'), ' ')
+  return x.replace(/[+\-–—,.;:()/\\"'!?^#]/g, ' ').replace(/\b\d+\b/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 // klucz modelu: nazwa bez marki, wymiarów, kolorów, strony i słów-wypełniaczy (wersje typu SLIM, PLUS, Nova zostają)
 export function familyKey(name, brandName) {
   let s = ' ' + norm(name) + ' '

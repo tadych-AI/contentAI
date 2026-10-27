@@ -1,6 +1,6 @@
 // eMAG: charakterystyki z danych Baselinkera (dopasowane do słowników z szablonu), gwarancja, typ rodziny, wiersze pliku importu.
 // Bez zależności od przeglądarki i bazy – testowane w Node.
-import { variantAttrs, colorParam } from './familiesCore.js'
+import { variantAttrs, colorParam, versionKey } from './familiesCore.js'
 
 const fold = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/\s+/g, ' ').trim()
 
@@ -165,7 +165,7 @@ export function rowProblems(fileType, row, chars) {
 // ===== Rodziny eMAG: jak warianty rodziny z aplikacji połączą się w eMAG =====
 // Najpierw cała rodzina; gdy żaden typ eMAG nie rozróżnia wariantów – podział wg cechy, której eMAG nie opisuje
 // (kolor akcesoriów, potem kolor, strona, wymiar), tak by w każdej podrodzinie typ eMAG działał.
-const SPLITS = [['kolor_akcesoriow', 'kolor akcesoriów'], ['kolor', 'kolor'], ['strona', 'strona'], ['wymiar', 'wymiar']]
+const SPLITS = [['kolor_akcesoriow', 'kolor akcesoriów'], ['kolor', 'kolor'], ['strona', 'strona'], ['wymiar', 'wymiar'], ['wersja', 'wersja / zawartość zestawu']]
 const ACC_HU = { 'biały': 'fehér', 'czarny': 'fekete', 'złoty': 'arany', 'chrom': 'króm', 'grafit': 'grafit', 'szary': 'szürke', 'miedziany': 'réz', 'nikiel': 'nikkel', 'inox': 'inox', 'antracyt': 'antracit', 'beżowy': 'bézs' }
 const SIDE_HU = { lewa: 'bal oldali', prawa: 'jobb oldali' }
 export const SPLIT_LABEL = Object.fromEntries(SPLITS)
@@ -190,6 +190,7 @@ export function splitSuffix(key, value) {
   if (key === 'kolor') return ACC_HU[value] || value
   if (key === 'strona') return SIDE_HU[value] || value
   if (key === 'wymiar') return `${value} cm`
+  if (key === 'wersja') return value
   return value
 }
 
@@ -198,8 +199,12 @@ export function planEmagFamilies(types, chars, items, { forcedType = null } = {}
   if (items.length < 2) return { mode: 'jeden', groups: [], why: 'rodzina jednoproduktowa – produkt trafi do eMAG bez rodziny' }
   const whole = forcedType && typeFits(types, chars, forcedType, items) ? { type: forcedType } : chooseFamilyType(types, chars, items)
   if (whole.type) return { mode: 'cala', split_key: '', groups: [{ split_value: '', items, type: whole.type, selector: selectorOf(types, chars, whole.type, items) }] }
+  // „wersja”: słowa, którymi nazwy wariantów różnią się między sobą (np. „obudowa syfon” vs bez dodatków)
+  const vk = items.map(m => versionKey(m.product?.name).split(' ').filter(Boolean))
+  const common = vk.length ? vk[0].filter(w => vk.every(ws => ws.includes(w))) : []
+  const verOf = m => { const ws = versionKey(m.product?.name).split(' ').filter(w => w && !common.includes(w)); return (m.product?.is_bundle ? 'zestaw ' : '') + (ws.join(' ') || 'podstawowa') }
   for (const [key] of SPLITS) {
-    const val = m => variantAttrs(m.product?.name)[key] || ''
+    const val = m => key === 'wersja' ? verOf(m) : (variantAttrs(m.product?.name)[key] || '')
     const vals = new Set(items.map(val))
     if (vals.size < 2) continue
     const groups = [...vals].map(v => ({ split_value: v, items: items.filter(m => val(m) === v) }))
@@ -212,7 +217,24 @@ export function planEmagFamilies(types, chars, items, { forcedType = null } = {}
     }
     if (ok && groups.some(g => g.type)) return { mode: 'podzial', split_key: key, groups: groups.sort((a, b) => a.split_value.localeCompare(b.split_value, 'pl')) }
   }
-  return { mode: 'osobno', groups: [], why: whole.why || 'żaden typ rodziny eMAG ani podział nie rozróżnia wariantów – produkty trafią osobno' }
+  return { mode: 'osobno', groups: [], why: whole.why || 'żaden typ rodziny eMAG ani podział nie rozróżnia wariantów – produkty trafią osobno', details: diagnoseTypes(types, chars, items) }
+}
+
+// Dlaczego żaden typ rodziny nie pasuje: dla każdego typu – brakujące wartości (SKU) albo warianty o identycznych wartościach
+export function diagnoseTypes(types, chars, items) {
+  const out = []
+  for (const t of types || []) {
+    const attrs = t.attributes.map(a => ({ name: a.name, key: chars.find(c => fold(c.name) === fold(a.name))?.key }))
+    if (attrs.some(a => !a.key)) { out.push({ type: t.label, score: 999, text: `szablon eMAG nie ma charakterystyki ${attrs.filter(a => !a.key).map(a => a.name).join(', ')}` }); continue }
+    const missing = []
+    for (const a of attrs) { const skus = items.filter(m => !m.values?.[a.key]?.value).map(m => m.product.sku); if (skus.length) missing.push(`brak „${a.name}” u: ${skus.join(', ')}`) }
+    const groups = new Map()
+    for (const m of items) { const k = attrs.map(a => m.values?.[a.key]?.value || '–').join(' | '); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(m.product.sku) }
+    const dups = [...groups].filter(([, s]) => s.length > 1).map(([k, s]) => `te same wartości (${attrs.map(a => a.name).join(' + ')} = ${k}) u: ${s.join(', ')}`)
+    const score = missing.length * 2 + dups.length
+    if (score) out.push({ type: t.label, score, text: [...missing, ...dups].join('; ') })
+  }
+  return out.sort((a, b) => a.score - b.score).slice(0, 3)
 }
 
 // Zmiany w spisie rodzin eMAG dla jednej rodziny z aplikacji: { upserts: [...], removals: [id], conflicts: [...] }
