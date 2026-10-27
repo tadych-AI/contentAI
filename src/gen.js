@@ -141,7 +141,7 @@ export async function regenerateSections(desc, sections, comments, general, onCr
   return ins.data.id
 }
 
-// Warianty z zaakceptowanego opisu bazowego: paczki po 3 SKU, kolejno
+// Warianty z zaakceptowanego opisu bazowego: jedno zadanie n8n (do 20 SKU)
 export async function generateVariants(base, { onlyMissing = true } = {}) {
   const ctx = await buildContext(base.family_id, base.channel_id)
   if (!ctx.template) throw new Error('Brak aktywnego szablonu')
@@ -168,17 +168,14 @@ export async function generateVariants(base, { onlyMissing = true } = {}) {
   const byId = Object.fromEntries(todo.map(p => [p.id, p]))
   const variants = created.map(c => { const p = byId[c.product_id]; return { description_id: c.id, ...productInfo(p), images: resolveImages(ctx.template, p, { media: ctx.media, brandId: ctx.family.brand_id }),
     facts: factsFor(ctx.facts, p.id).map(f => f.content) } })
-  // paczki po 3 SKU, jedna po drugiej (równoległe wykonania przeciążały Vertex → przekroczenia czasu); działa w tle, postęp w nakładce zadań
-  const chunks = []
-  for (let i = 0; i < variants.length; i += 3) chunks.push(variants.slice(i, i + 3))
-  ;(async () => {
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i]
-      try { await runJob('generate_variants', { ...common, variants: chunk }, { timeoutSec: 1800, progress: `paczka ${i + 1} z ${chunks.length} (${chunk.map(v => v.sku).join(', ')})` }) }
-      catch (e) {
-        await supabase.from('descriptions').update({ status: 'blad', qa: { pass: false, errors: [e.message], warnings: [] } }).in('id', chunk.map(v => v.description_id)).eq('status', 'generowanie')
-      }
+  // jedno zadanie n8n na rodzinę (do 20 SKU; n8n robi po 3 warianty naraz szybkim modelem) – działa w n8n niezależnie od otwartej karty przeglądarki
+  for (let i = 0; i < variants.length; i += 20) {
+    const chunk = variants.slice(i, i + 20)
+    try { await startJob('generate_variants', { ...common, variants: chunk }) }
+    catch (e) {
+      await supabase.from('descriptions').update({ status: 'blad', qa: { pass: false, errors: [e.message], warnings: [] } }).in('id', chunk.map(v => v.description_id))
+      throw e
     }
-  })()
+  }
   return variants.length
 }
