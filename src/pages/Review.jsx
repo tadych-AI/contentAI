@@ -17,16 +17,37 @@ function useLookups() {
   return l
 }
 
-function ReviewList() {
+function ReviewList({ profile }) {
   const [rows, setRows] = useState(null)
   const [filter, setFilter] = useState('do_weryfikacji')
+  const [sel, setSel] = useState(new Set())
+  const [msg, setMsg] = useState(null)
+  const [busy, setBusy] = useState(false)
   const lk = useLookups()
-  useEffect(() => { (async () => {
+  const canApprove = ['akceptujacy', 'admin'].includes(profile?.role)
+  async function load() {
     const data = await fetchAll('descriptions', 'id, family_id, channel_id, product_id, version, status, qa, created_at, is_base', q => q.order('version', { ascending: false }))
     const latest = {}
-    for (const d of data || []) { const k = `${d.family_id}|${d.channel_id}|${d.product_id}`; if (!latest[k]) latest[k] = d }
+    for (const d of data || []) { const k = `${d.family_id}|${d.channel_id}|${d.product_id}`; if (!latest[k]) latest[k] = { ...d, versions: [] }; latest[k].versions.push(d) }
     setRows(Object.values(latest).sort((a, b) => b.created_at.localeCompare(a.created_at)))
-  })() }, [])
+  }
+  useEffect(() => { load() }, [])
+  // usuwa opis produktu razem ze wszystkimi wersjami (generujący – tylko gdy żadna wersja nie jest zaakceptowana)
+  async function removeSelected() {
+    const chosen = rows.filter(r => sel.has(r.id))
+    const blocked = canApprove ? [] : chosen.filter(r => r.versions.some(v => ['zaakceptowany', 'opublikowany'].includes(v.status)))
+    const ok = chosen.filter(r => !blocked.includes(r))
+    if (!ok.length) { setMsg({ type: 'error', text: 'Zaakceptowane opisy może usunąć tylko akceptujący lub admin.' }); return }
+    const accepted = ok.filter(r => r.versions.some(v => ['zaakceptowany', 'opublikowany'].includes(v.status))).length
+    if (!window.confirm(`Usunąć ${ok.length === 1 ? 'opis' : `${ok.length} opisy`} razem ze wszystkimi wersjami?${accepted ? `\n\nW tym ${accepted} zaakceptowanych – nie trafią do pliku eMAG, dopóki nie wygenerujesz ich ponownie.` : ''}\n\nTej operacji nie można cofnąć.`)) return
+    setBusy(true); setMsg(null)
+    const ids = ok.flatMap(r => r.versions.map(v => v.id))
+    let err = null
+    for (let i = 0; i < ids.length; i += 200) { const r = await supabase.from('descriptions').delete().in('id', ids.slice(i, i + 200)); err = err || r.error }
+    setBusy(false); setSel(new Set())
+    setMsg(err ? { type: 'error', text: plError(err.message) } : { type: 'ok', text: `Usunięto ${ok.length === 1 ? 'opis' : `${ok.length} opisy`}${blocked.length ? `; pominięto ${blocked.length} zaakceptowanych (usuwa je akceptujący lub admin)` : ''}.` })
+    load()
+  }
   if (!rows || !lk) return <section className="page"><DrainLoader /></section>
   const shown = filter === 'wszystkie' ? rows : rows.filter(r => r.status === filter || (filter === 'do_weryfikacji' && r.status === 'generowanie'))
   return (
@@ -37,13 +58,17 @@ function ReviewList() {
         {FILTERS.map(([k, l]) => <button key={k} role="tab" aria-selected={filter === k} className={filter === k ? 'tab on' : 'tab'} onClick={() => setFilter(k)}>{l}
           <span className="count">{k === 'wszystkie' ? rows.length : rows.filter(r => r.status === k || (k === 'do_weryfikacji' && r.status === 'generowanie')).length}</span></button>)}
       </div>
+      {msg && <p className={msg.type} role="status">{msg.text}</p>}
+      {sel.size > 0 && <div className="import-bar" role="region" aria-label="Akcje opisów"><strong style={{ flex: 1 }}>Zaznaczono {sel.size}</strong>
+        <button className="btn ghost danger" disabled={busy} onClick={removeSelected}>{busy ? 'Usuwanie…' : 'Usuń zaznaczone'}</button><button className="link-dark" onClick={() => setSel(new Set())}>Odznacz</button></div>}
       {shown.length === 0 ? <div className="panel empty"><p className="muted">Brak opisów w tym widoku. Opis bazowy generujesz na ekranie Rodziny produktów (rodzina z zatwierdzonymi faktami).</p></div> : (
         <div className="panel table-wrap">
           <table className="compact">
-            <thead><tr><th>Rodzina</th><th>SKU</th><th>Kanał</th><th>Wersja</th><th>Status</th><th>QA</th><th>Utworzono</th><th /></tr></thead>
+            <thead><tr><th className="check"><input type="checkbox" aria-label="Zaznacz wszystkie" checked={shown.length > 0 && shown.every(r => sel.has(r.id))} onChange={e => setSel(e.target.checked ? new Set(shown.map(r => r.id)) : new Set())} /></th><th>Rodzina</th><th>SKU</th><th>Kanał</th><th>Wersja</th><th>Status</th><th>QA</th><th>Utworzono</th><th /></tr></thead>
             <tbody>{shown.map(r => (
               <tr key={r.id}>
-                <td><strong>{lk.fam[r.family_id] || '—'}</strong>{r.is_base && <span className="tag">bazowy</span>}</td><td className="mono">{lk.sku[r.product_id]}</td><td>{lk.ch[r.channel_id]}</td><td>v{r.version}</td>
+                <td className="check"><input type="checkbox" aria-label={`Zaznacz ${lk.sku[r.product_id]}`} checked={sel.has(r.id)} onChange={() => setSel(x => { const n = new Set(x); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n })} /></td>
+                <td><strong>{lk.fam[r.family_id] || 'bez rodziny'}</strong>{r.is_base && <span className="tag">bazowy</span>}</td><td className="mono">{lk.sku[r.product_id]}</td><td>{lk.ch[r.channel_id]}</td><td>v{r.version}{r.versions.length > 1 ? <span className="muted small"> ({r.versions.length} wersje)</span> : ''}</td>
                 <td><span className={`tag st-${r.status}`}>{STATUS[r.status]}</span></td>
                 <td>{r.qa ? <>{r.qa.errors?.length ? <span className="tag err">{r.qa.errors.length} błędy</span> : <span className="tag okt">OK</span>} {r.qa.warnings?.length ? <span className="muted small">{r.qa.warnings.length} uwag</span> : null}</> : '—'}</td>
                 <td className="muted">{new Date(r.created_at).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })}</td>
@@ -130,6 +155,15 @@ function ReviewDetail({ id, profile }) {
     if (error) setErr(plError(error.message)); else load()
     setBusy('')
   }
+  async function removeVersion() {
+    const others = versions.filter(v => v.id !== d.id)
+    if (!window.confirm(`Usunąć wersję v${d.version} tego opisu?${others.length ? ` Zostanie ${others.length === 1 ? '1 wersja' : `${others.length} wersje`}.` : ' To jedyna wersja – opis tego SKU zniknie z listy.'}${d.is_base && kids.length ? '\n\nOpisy wariantów zostają.' : ''}\n\nTej operacji nie można cofnąć.`)) return
+    setBusy('delete'); setErr('')
+    const { error } = await supabase.from('descriptions').delete().eq('id', d.id)
+    setBusy('')
+    if (error) { setErr(plError(error.message)); return }
+    nav(others.length ? `/opisy/${others[0].id}` : '/opisy')
+  }
   async function variants() {
     setBusy('variants'); setErr('')
     try { const n = await generateVariants(d); if (!n) setErr('Wszystkie warianty mają już zaakceptowane opisy.'); await load() } catch (e) { setErr(e.message) } finally { setBusy('') }
@@ -185,6 +219,7 @@ function ReviewDetail({ id, profile }) {
               <button role="tab" aria-selected={view === 'grafiki'} className={view === 'grafiki' ? 'tab on' : 'tab'} onClick={() => setView('grafiki')}>Grafiki</button>
             </div>
             <div className="review-actions">
+              {(canApprove || !['zaakceptowany', 'opublikowany'].includes(d.status)) && <button className="btn ghost danger" disabled={!!busy} onClick={removeVersion}>Usuń wersję</button>}
               {d.html && <button className="btn ghost" onClick={() => navigator.clipboard.writeText(d.html)}>Kopiuj HTML</button>}
               {canApprove && d.status === 'do_weryfikacji' && (
                 <button className="btn" onClick={accept} disabled={!!busy || qa.errors?.length > 0} title={qa.errors?.length ? 'Najpierw popraw błędy QA' : ''}>{busy === 'accept' ? 'Zapisywanie…' : 'Akceptuj opis'}</button>
@@ -248,5 +283,5 @@ function ReviewDetail({ id, profile }) {
 
 export default function Review({ profile }) {
   const { id } = useParams()
-  return id ? <ReviewDetail id={id} profile={profile} /> : <ReviewList />
+  return id ? <ReviewDetail id={id} profile={profile} /> : <ReviewList profile={profile} />
 }
