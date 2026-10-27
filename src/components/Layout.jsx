@@ -37,7 +37,6 @@ export default function Layout({ profile }) {
     const label = () => {
       for (const table of el.querySelectorAll('table:not(.no-resp)')) {
         const heads = [...(table.tHead?.rows[0]?.cells || [])].map(th => th.textContent.trim())
-        if (!heads.length) continue
         for (const tr of table.tBodies[0]?.rows || []) {
           let col = 0
           for (const td of tr.cells) {
@@ -47,12 +46,25 @@ export default function Layout({ profile }) {
           }
         }
       }
+      // tabela, która nie mieści się w szerokości swojej karty, przechodzi w układ kart (wiersz = karta); sprawdzamy od najbardziej zagnieżdżonych
+      const tables = [...el.querySelectorAll('table:not(.no-resp)')].reverse()
+      for (const table of tables) {
+        const box = table.parentElement
+        if (!box) continue
+        const was = table.hasAttribute('data-cards')
+        if (was) table.removeAttribute('data-cards')
+        const fits = table.getBoundingClientRect().width <= box.clientWidth + 1 && window.innerWidth > 640
+        if (!fits) table.setAttribute('data-cards', '')
+      }
     }
     label()
     let t = null
-    const mo = new MutationObserver(() => { clearTimeout(t); t = setTimeout(label, 50) })
-    mo.observe(el, { childList: true, subtree: true })
-    return () => { mo.disconnect(); clearTimeout(t) }
+    const schedule = () => { clearTimeout(t); t = setTimeout(label, 60) }
+    const mo = new MutationObserver(schedule)
+    mo.observe(el, { childList: true, subtree: true, characterData: true })
+    const ro = new ResizeObserver(schedule)
+    ro.observe(el)
+    return () => { mo.disconnect(); ro.disconnect(); clearTimeout(t) }
   }, [])
   return (
     <div className={'shell' + (menuOpen ? ' menu-open' : '')}>

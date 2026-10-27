@@ -90,7 +90,7 @@ button.media-tile:hover, button.media-tile:focus-visible { border-color: var(--a
 /* ===== Responsywność: tabele dopasowują się do szerokości ekranu zamiast przewijać się w poziomie ===== */
 .page.wide { max-width: none; }
 table.compact { width: 100%; }
-table.compact td { white-space: normal; overflow-wrap: anywhere; }
+table.compact td { white-space: normal; overflow-wrap: break-word; }
 table.compact td.mono, table.compact td.num, table.compact td.check, table.compact td.actions, table.compact td.nowrap { white-space: nowrap; overflow-wrap: normal; }
 td.name { min-width: 160px; }
 td.path { max-width: none; }
@@ -99,17 +99,8 @@ td.path { max-width: none; }
 .filters select, .filters input, .tpl-pick select { min-width: 0; max-width: 100%; }
 @media (max-width: 900px) {
   .content { padding: 20px 16px; }
-  /* tabele: wiersz = karta, etykieta kolumny z data-label (nadawane automatycznie w Layout) */
-  .content table:not(.no-resp) thead { display: none; }
-  .content table:not(.no-resp), .content table:not(.no-resp) > tbody, .content table:not(.no-resp) > tbody > tr, .content table:not(.no-resp) > tbody > tr > td { display: block; width: 100%; }
-  .content table:not(.no-resp) > tbody > tr { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; background: var(--surface); }
-  .content table:not(.no-resp) > tbody > tr > td { border: 0; padding: 4px 0; white-space: normal; text-align: left; min-width: 0; max-width: none; }
-  .content table:not(.no-resp) > tbody > tr > td[data-label]::before { content: attr(data-label); display: block; font-size: 12px; color: var(--ink-soft); }
-  .content table:not(.no-resp) > tbody > tr > td.check { display: inline-block; width: auto; }
-  .content table:not(.no-resp) > tbody > tr > td.check + td { display: inline-block; width: auto; margin-left: 8px; }
-  .content table:not(.no-resp) > tbody > tr > td:empty { display: none; }
-  .content table:not(.no-resp) > tbody > tr.detail-row { border: 0; padding: 0; background: none; }
 }
+
 
 /* eMAG – charakterystyki jako karty wariantów */
 .variant-cards { display: flex; flex-direction: column; gap: 12px; }
@@ -164,3 +155,21 @@ td.path { max-width: none; }
 .preview-frame { max-width: 100%; overflow-x: auto; }
 @media (max-width: 860px) { .shell { grid-template-rows: auto 1fr; align-content: start; min-height: 100vh; } .sidebar { align-self: start; } }
 .content .tag { overflow-wrap: normal; word-break: normal; }
+
+/* ===== Tabele, które nie mieszczą się w karcie (atrybut data-cards nadaje Layout): wiersz = karta z podpisami pól ===== */
+.content table[data-cards] > thead { display: none; }
+.content table[data-cards], .content table[data-cards] > tbody, .content table[data-cards] > tbody > tr { display: block; width: 100%; }
+.content table[data-cards] > tbody > tr { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 16px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; background: var(--surface); }
+.content table[data-cards] > tbody > tr > td { display: block; border: 0; padding: 0; white-space: normal; text-align: left; min-width: 0; max-width: none; width: auto; overflow-wrap: anywhere; }
+.content table[data-cards] > tbody > tr > td select, .content table[data-cards] > tbody > tr > td input:not([type=checkbox]):not([type=radio]) { width: 100%; max-width: 100%; min-width: 0; }
+.content table[data-cards] > tbody > tr > td[data-label]::before { content: attr(data-label); display: block; font-size: 12px; color: var(--ink-soft); }
+.content table[data-cards] > tbody > tr > td.name, .content table[data-cards] > tbody > tr > td.full, .content table[data-cards] > tbody > tr > td.flags { grid-column: 1 / -1; }
+.content table[data-cards] > tbody > tr > td.check { grid-column: 1 / -1; }
+.content table[data-cards] > tbody > tr > td.actions { grid-column: 1 / -1; text-align: right; }
+.content table[data-cards] > tbody > tr > td:empty { display: none; }
+.content table[data-cards] > tbody > tr.detail-row { display: block; border: 0; padding: 0; background: none; }
+.content table[data-cards] > tbody > tr.detail-row > td { display: block; }
+@media (max-width: 640px) { .content table[data-cards] > tbody > tr { grid-template-columns: 1fr; } }
+.page { max-width: 1440px; }
+
+.content select, .content input, .content textarea { max-width: 100%; }
