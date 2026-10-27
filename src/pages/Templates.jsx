@@ -16,6 +16,7 @@ const SECTION_TYPES = {
   why: { label: 'Dlaczego warto', add: 'Dlaczego warto (lista)', help: 'Nagłówek i 5 punktów „Hasło – wyjaśnienie” (hasło pogrubione).' },
   closing: { label: 'Podsumowanie', add: 'Podsumowanie', help: 'Wyśrodkowany nagłówek z nazwą modelu i 2–3 zdania podsumowania.' },
   specs: { label: 'Specyfikacja', add: 'Specyfikacja (parametry)', help: 'Lista do 12 parametrów „Nazwa: wartość” z danych Baselinkera, przetłumaczona na język rynku.' },
+  banner: { label: 'Baner / moduł graficzny', add: 'Baner / moduł graficzny', help: 'Grafika na całą szerokość opisu (np. baner marki, grafika technologii, tabela wymiarów). Wybierz grafikę z biblioteki, grafikę marki wg roli albo zdjęcie produktu. Można dodać kilka banerów w różnych miejscach.' },
   gallery: { label: 'Galeria zdjęć', add: 'Galeria zdjęć', help: 'Zdjęcia produktu jedno pod drugim, bez tekstu. Na etapie weryfikacji można je zmienić dla każdego SKU.' },
 }
 const newKey = secs => { let i = 1; while (secs.some(s => s.key === `S${i}`)) i++; return `S${i}` }
@@ -53,7 +54,7 @@ function SectionRow({ sec, idx, count, onChange, onMove, onRemove, lib }) {
   return (
     <div className="sec-row panel" style={{ padding: '12px 14px', marginBottom: 8 }}>
       <div className="sec-head" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label className="check"><input type="checkbox" checked={sec.enabled !== false} onChange={e => set({ enabled: e.target.checked })} /> <strong>{SECTION_TYPES[sec.type]?.label || `Sekcja ${sec.key}`}{sec.type === 'content' ? ` ${sec.key}` : ''}</strong></label>
+        <label className="check"><input type="checkbox" checked={sec.enabled !== false} onChange={e => set({ enabled: e.target.checked })} /> <strong>{SECTION_TYPES[sec.type]?.label || `Sekcja ${sec.key}`}{['content', 'banner'].includes(sec.type) ? ` ${sec.key}` : ''}</strong></label>
         <span style={{ marginLeft: 'auto' }} className="row-form">
           <button className="link-dark" disabled={idx === 0} onClick={() => onMove(-1)} aria-label="Przesuń wyżej">↑</button>
           <button className="link-dark" disabled={idx === count - 1} onClick={() => onMove(1)} aria-label="Przesuń niżej">↓</button>
@@ -71,7 +72,8 @@ function SectionRow({ sec, idx, count, onChange, onMove, onRemove, lib }) {
       {sec.type === 'faq' && <label style={{ maxWidth: 200 }}>Liczba pytań<input type="number" min="1" max="6" value={sec.max_questions || 4} onChange={e => set({ max_questions: Math.min(6, Math.max(1, Number(e.target.value) || 4)) })} /></label>}
       {SECTION_TYPES[sec.type]?.help && <p className="muted small" style={{ margin: '6px 0 0' }}>{SECTION_TYPES[sec.type].help}</p>}
       {sec.type === 'gallery' && <label style={{ maxWidth: 360 }}>Pozycje zdjęć z Baselinkera (np. 2-8 albo 5, 6, 9)<input value={sec.positions || ''} placeholder="2-8" onChange={e => set({ positions: e.target.value })} /></label>}
-      {['hero', 'content'].includes(sec.type) && (
+      {sec.type === 'banner' && <label>Opis grafiki (ALT – tekst alternatywny, w języku rynku)<input value={sec.alt || ''} onChange={e => set({ alt: e.target.value })} placeholder="np. Besco – lengyel fürdőszoba-gyártó" /></label>}
+      {['hero', 'content', 'banner'].includes(sec.type) && (
         <div className="filter-grid" style={{ marginTop: 4 }}>
           <label>Grafika<select value={sec.image_source || 'none'} onChange={e => set({ image_source: e.target.value })}>{Object.entries(IMAGE_SOURCES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
           {src === 'product' && <label>Pozycja zdjęcia w Baselinkerze (1–16)<input type="number" min="1" max="16" value={sec.image_position || 1} onChange={e => set({ image_position: Number(e.target.value) || 1 })} /></label>}
@@ -136,12 +138,12 @@ function Editor({ tpl, dicts, sample, canEdit, onSaved, onClose, lib }) {
             onRemove={() => setSecs(secs.filter((_, j) => j !== i))} lib={lib} />
         ))}
         <label style={{ maxWidth: 360 }}>+ Dodaj sekcję<select value="" onChange={e => { const type = e.target.value; if (!type) return
-          const key = type === 'content' ? newKey(secs) : { features: 'FEATURES', why: 'WHY', closing: 'CLOSING', specs: 'SPECS', gallery: 'GALLERY' }[type]
+          const key = type === 'content' ? newKey(secs) : type === 'banner' ? (() => { let i = 1; while (secs.some(x => x.key === `BANNER${i}`)) i++; return `BANNER${i}` })() : { features: 'FEATURES', why: 'WHY', closing: 'CLOSING', specs: 'SPECS', gallery: 'GALLERY' }[type]
           if (secs.some(x => x.key === key)) return
-          const n = type === 'content' ? { key, type, enabled: true, topic: '', image_source: 'none', list: true, bold: false, accent: false } : { key, type, enabled: true, image_source: 'none', ...(type === 'gallery' ? { positions: '2-8' } : {}) }
+          const n = type === 'content' ? { key, type, enabled: true, topic: '', image_source: 'none', list: true, bold: false, accent: false } : type === 'banner' ? { key, type, enabled: true, image_source: 'library', image_url: '', alt: '' } : { key, type, enabled: true, image_source: 'none', ...(type === 'gallery' ? { positions: '2-8' } : {}) }
           const faqAt = secs.findIndex(x => x.type === 'faq'); const a = [...secs]; a.splice(type === 'gallery' || faqAt < 0 ? a.length : faqAt, 0, n); setSecs(a) }}>
           <option value="">wybierz rodzaj…</option>
-          {Object.entries(SECTION_TYPES).filter(([k, v]) => v.add && (k === 'content' || !secs.some(x => x.type === k))).map(([k, v]) => <option key={k} value={k}>{v.add}</option>)}
+          {Object.entries(SECTION_TYPES).filter(([k, v]) => v.add && (k === 'content' || k === 'banner' || !secs.some(x => x.type === k))).map(([k, v]) => <option key={k} value={k}>{v.add}</option>)}
         </select></label>
 
         <div className="panel" style={{ marginTop: 18 }}>

@@ -71,6 +71,7 @@ function rdContext(fields, template, images) {
     if (sec.type === 'why') ctx.dlaczego = [1, 2, 3, 4, 5].map(i => g(`WHY_LI${i}`)).filter(Boolean)
     if (sec.type === 'specs') ctx.specyfikacja = Array.from({ length: 12 }, (_, i) => g(`SPEC${i + 1}`)).filter(Boolean)
     if (sec.type === 'gallery') ctx.galeria = rdGallery(sec, images)
+    if (sec.type === 'banner') ctx[`${k}_IMG`] = images ? (images[k] || '') : (sec.image_url || '')
     if (sec.type === 'faq') ctx.faq = [1, 2, 3, 4, 5, 6].slice(0, sec.max_questions || 6).map(i => ({ NR: i, Q: g(`FAQ_Q${i}`), A: g(`FAQ_A${i}`) })).filter(x => x.Q && x.A)
   }
   ctx.MA_FAQ = ctx.faq.length > 0
@@ -109,6 +110,11 @@ function rdExtraBlock(sec, g, images, st, esc, attr, showcase) {
     if (!sp.length) return ''
     return `<hr style="border: none; height: 1px; background: #e5e7eb; margin: 8px 0 16px 0">${head(g('SPECS_H2'))}<div style="background: #f8fafc; border: 1px solid #e5e7eb; padding: 16px 18px; margin: 0 0 18px 0"><ul style="margin: 0; padding-left: 18px; text-align: left">` +
       sp.map(x => { const [a, b] = rdSplit(x, [': ']); return `<li>${a ? `${esc(a)}: <strong>${esc(b)}</strong>` : esc(b)}</li>` }).join('') + '</ul></div>'
+  }
+  if (sec.type === 'banner') {
+    const src = images ? (images[sec.key] || '') : (['static', 'library'].includes(sec.image_source || 'static') ? (sec.image_url || '') : '')
+    if (!src) return ''
+    return `<p style="margin: ${showcase ? '18px 0' : '24px 0'}; text-align: center"><img alt="${attr(sec.alt || g('HERO_H1'))}" src="${attr(src)}" style="width: 100%; max-width: 100%; height: auto"></p>`
   }
   if (sec.type === 'gallery') {
     const im = rdGallery(sec, images)
@@ -190,7 +196,7 @@ function renderDescription(fields, template, images) {
       if (lis.length) h += `<ul style="margin: 0 0 ${AK ? 10 : 14}px 0; padding-left: 18px">` + lis.map(l => `<li>${esc(l)}</li>`).join('') + '</ul>'
       if (AK) h += `<p style="margin: 0 0 14px 0; color: ${st.accent_color}"><strong>${esc(AK)}</strong></p>`
       h += img(srcOf(sec), g(`${k}_IMG_ALT`)) + '</div>'
-    } else if (['features', 'why', 'closing', 'specs', 'gallery'].includes(sec.type)) {
+    } else if (['features', 'why', 'closing', 'specs', 'gallery', 'banner'].includes(sec.type)) {
       h += rdExtraBlock(sec, g, images, st, esc, attr, false)
     } else if (sec.type === 'faq') {
       const qs = [1, 2, 3, 4, 5, 6].slice(0, sec.max_questions || 6).map(i => ({ q: g(`FAQ_Q${i}`), a: g(`FAQ_A${i}`) })).filter(x => x.q && x.a)

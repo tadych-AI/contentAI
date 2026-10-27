@@ -5,7 +5,7 @@ import MediaPicker from './MediaPicker.jsx'
 
 // Grafiki opisu dla jednego SKU: wybór zdjęcia z Baselinkera (dowolna pozycja), grafiki z biblioteki albo „bez grafiki” dla każdego miejsca w szablonie.
 // Wybór zapisuje się przy produkcie (products.image_choice) – obowiązuje też przy kolejnych generacjach – i od razu przebudowuje HTML tego opisu.
-const slotLabel = s => s.type === 'hero' ? 'Nagłówek (HERO)' : `Sekcja ${s.key}${s.topic ? ` – ${s.topic}` : ''}`
+const slotLabel = s => s.type === 'hero' ? 'Nagłówek (HERO)' : s.type === 'banner' ? `Baner ${s.key.replace('BANNER', '')}` : `Sekcja ${s.key}${s.topic ? ` – ${s.topic}` : ''}`
 
 export default function ImageSlots({ d, tpl, canEdit, onSaved }) {
   const [p, setP] = useState(null)
@@ -28,7 +28,7 @@ export default function ImageSlots({ d, tpl, canEdit, onSaved }) {
   if (!tpl) return <p className="muted">Brak szablonu opisu.</p>
   if (!p) return <p className="muted">{msg?.text || 'Wczytywanie zdjęć…'}</p>
 
-  const slots = (tpl.sections || []).filter(s => s && s.enabled !== false && ['hero', 'content'].includes(s.type) && (s.image_source || 'static') !== 'none')
+  const slots = (tpl.sections || []).filter(s => s && s.enabled !== false && ['hero', 'content', 'banner'].includes(s.type) && (s.image_source || 'static') !== 'none')
   const gallery = (tpl.sections || []).find(s => s && s.enabled !== false && s.type === 'gallery')
   const imgs = [...(p.images || [])].sort((a, b) => a.position - b.position)
   const current = resolveImages(tpl, p, { media, brandId: p.brand_id })
@@ -44,7 +44,7 @@ export default function ImageSlots({ d, tpl, canEdit, onSaved }) {
     const images = resolveImages(tpl, product, { media, brandId: p.brand_id })
     // brakujący opis obrazka (sekcja wcześniej bez grafiki) → nagłówek sekcji
     const fields = { ...(d.fields || {}) }
-    for (const s of slots) { const k = `${s.key}_IMG_ALT`; if (images[s.key] && !String(fields[k] || '').trim()) fields[k] = s.type === 'hero' ? (fields.HERO_H1 || fields.TITLE || '') : (fields[`${s.key}_H2`] || '') }
+    for (const s of slots.filter(x => x.type !== 'banner')) { const k = `${s.key}_IMG_ALT`; if (images[s.key] && !String(fields[k] || '').trim()) fields[k] = s.type === 'hero' ? (fields.HERO_H1 || fields.TITLE || '') : (fields[`${s.key}_H2`] || '') }
     const html = renderDescription(fields, tpl, images)
     const r2 = await supabase.from('descriptions').update({ html, fields, meta: { ...(d.meta || {}), images } }).eq('id', d.id)
     setBusy(false)
