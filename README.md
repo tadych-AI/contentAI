@@ -24,7 +24,7 @@ Adres po wdrożeniu: https://tadych-ai.github.io/contentAI/
 ## Uruchomienie
 
 ### 1. Supabase
-1. SQL Editor → wklej i uruchom całość pliku `001_schema.sql` (na czystym projekcie), potem kolejno `002_fakty.sql`, `003_rodziny.sql`, `004_opisy.sql`, `005_emag.sql`, `006_grafiki.sql`, `007_tytuly_zestawy.sql`, `008_tytuly_pl.sql`, `009_uzytkownicy.sql`, `010_rodziny_grafiki.sql`, `011_szablon_wizytowka.sql`, `012_rodziny_emag.sql`, `013_usuwanie_opisow.sql`.
+1. SQL Editor → wklej i uruchom całość pliku `001_schema.sql` (na czystym projekcie), potem kolejno `002_fakty.sql`, `003_rodziny.sql`, `004_opisy.sql`, `005_emag.sql`, `006_grafiki.sql`, `007_tytuly_zestawy.sql`, `008_tytuly_pl.sql`, `009_uzytkownicy.sql`, `010_rodziny_grafiki.sql`, `011_szablon_wizytowka.sql`, `012_rodziny_emag.sql`, `013_usuwanie_opisow.sql`, `014_bledy_zadan.sql`.
 2. Pierwsze konto: Authentication → Users → Add user (zaznacz „Auto Confirm User”). Kolejne konta dodaje admin w aplikacji (Konfiguracja → Użytkownicy).
 3. Pierwszemu adminowi nadaj rolę w SQL Editor: `update profiles set role = 'admin' where email = 'twoj@email';`
 4. Project Settings → API Keys: skopiuj klucz **publishable/anon** (do aplikacji) i **secret** (tylko do n8n).

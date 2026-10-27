@@ -6,6 +6,8 @@ import DrainLoader from '../components/DrainLoader.jsx'
 import ImageSlots from '../components/ImageSlots.jsx'
 
 const STATUS = { generowanie: 'w trakcie', do_weryfikacji: 'do weryfikacji', poprawki: 'poprawiony', zaakceptowany: 'zaakceptowany', opublikowany: 'opublikowany', blad: 'błąd', do_generacji: 'do generacji' }
+const STUCK_MIN = 20
+const secs = ms => { const v = Math.round((ms || 0) / 1000); return v >= 60 ? `${Math.floor(v / 60)} min ${v % 60} s` : `${v} s` }
 const FILTERS = [['do_weryfikacji', 'Do weryfikacji'], ['zaakceptowany', 'Zaakceptowane'], ['blad', 'Błędy'], ['wszystkie', 'Wszystkie']]
 
 function useLookups() {
@@ -69,7 +71,7 @@ function ReviewList({ profile }) {
               <tr key={r.id}>
                 <td className="check"><input type="checkbox" aria-label={`Zaznacz ${lk.sku[r.product_id]}`} checked={sel.has(r.id)} onChange={() => setSel(x => { const n = new Set(x); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n })} /></td>
                 <td><strong>{lk.fam[r.family_id] || 'bez rodziny'}</strong>{r.is_base && <span className="tag">bazowy</span>}</td><td className="mono">{lk.sku[r.product_id]}</td><td>{lk.ch[r.channel_id]}</td><td>v{r.version}{r.versions.length > 1 ? <span className="muted small"> ({r.versions.length} wersje)</span> : ''}</td>
-                <td><span className={`tag st-${r.status}`}>{STATUS[r.status]}</span></td>
+                <td><span className={`tag st-${r.status}`}>{STATUS[r.status]}</span>{r.status === 'generowanie' && Date.now() - new Date(r.created_at).getTime() > STUCK_MIN * 60000 && <span className="hint-inline small"> – ponad {STUCK_MIN} min, prawdopodobnie przerwane</span>}</td>
                 <td>{r.qa ? <>{r.qa.errors?.length ? <span className="tag err">{r.qa.errors.length} błędy</span> : <span className="tag okt">OK</span>} {r.qa.warnings?.length ? <span className="muted small">{r.qa.warnings.length} uwag</span> : null}</> : '—'}</td>
                 <td className="muted">{new Date(r.created_at).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })}</td>
                 <td><Link to={`/opisy/${r.id}`}>Otwórz</Link></td>
@@ -137,7 +139,7 @@ function ReviewDetail({ id, profile }) {
     if (data.template_id) { const t = await supabase.from('templates').select('*').eq('id', data.template_id).single(); setTpl(t.data) }
     const v = await supabase.from('descriptions').select('id, version, status').eq('channel_id', data.channel_id).eq('product_id', data.product_id).order('version', { ascending: false })
     setVersions(v.data || [])
-    let pending = data.status === 'generowanie'
+    let pending = data.status === 'generowanie' || (data.meta?.translation_pending && Date.now() - new Date(data.updated_at || data.created_at).getTime() < 10 * 60000)
     if (data.is_base) {
       const k = await supabase.from('descriptions').select('id, product_id, version, status, qa').eq('family_id', data.family_id).eq('channel_id', data.channel_id).eq('is_base', false).order('version', { ascending: false })
       const latest = {}; for (const x of k.data || []) if (!latest[x.product_id]) latest[x.product_id] = x
@@ -154,6 +156,11 @@ function ReviewDetail({ id, profile }) {
     const { error } = await supabase.from('descriptions').update({ status: 'zaakceptowany' }).eq('id', d.id)
     if (error) setErr(plError(error.message)); else load()
     setBusy('')
+  }
+  async function markStuck() {
+    setBusy('stuck')
+    const { error } = await supabase.from('descriptions').update({ status: 'blad', qa: { ...(d.qa || {}), pass: false, errors: ['Generowanie przerwane (brak odpowiedzi z n8n) – wygeneruj opis ponownie'] } }).eq('id', d.id).eq('status', 'generowanie')
+    setBusy(''); if (error) setErr(plError(error.message)); else load()
   }
   async function removeVersion() {
     const others = versions.filter(v => v.id !== d.id)
@@ -199,9 +206,17 @@ function ReviewDetail({ id, profile }) {
         </label>
       </header>
 
-      {d.status === 'generowanie' && <div className="panel"><p className="muted">AI pisze opis i tłumaczenie kontrolne, a jeśli kontrola znajdzie uwagi – poprawia je automatycznie (do 2 rund; zwykle 1–5 minut). Strona odświeży się sama.</p></div>}
+      {d.status === 'generowanie' && Date.now() - new Date(d.created_at).getTime() > STUCK_MIN * 60000 && (
+        <div className="panel"><p className="hint" style={{ marginTop: 0 }}>Generowanie trwa ponad {STUCK_MIN} minut – zadanie w n8n najpewniej zostało przerwane (np. limit czasu Gemini albo n8n). Oznacz opis jako przerwany i wygeneruj go ponownie; w n8n (Executions) widać, na którym kroku się zatrzymało.</p>
+          <button className="btn ghost" disabled={!!busy} onClick={markStuck}>Oznacz jako przerwany</button></div>
+      )}
+      {d.status === 'generowanie' && <div className="panel"><p className="muted">AI pisze opis, a jeśli kontrola znajdzie błędy – poprawia je automatycznie. Zwykle 1–3 minuty; tłumaczenie kontrolne dochodzi chwilę po pojawieniu się opisu. Strona odświeży się sama.</p></div>}
       {d.status !== 'generowanie' && (
         <>
+          {(d.meta?.timing?.total_ms || d.meta?.translation_pending || d.meta?.translation_error) && (
+            <p className="muted small" style={{ margin: '0 0 6px' }}>{d.meta?.timing?.total_ms ? `Czas generowania: ${secs(d.meta.timing.total_ms)} (treść ${secs(d.meta.timing.content_ms)}${d.meta.timing.fix1_ms ? `, poprawki ${secs((d.meta.timing.fix1_ms || 0) + (d.meta.timing.fix2_ms || 0))}` : ''}${d.meta.timing.translation_ms ? `, tłumaczenie ${secs(d.meta.timing.translation_ms)}` : ''}). ` : ''}
+              {d.meta?.translation_pending ? 'Tłumaczenie kontrolne (PL) w przygotowaniu – pojawi się za chwilę.' : d.meta?.translation_error ? `Tłumaczenie kontrolne nie powiodło się: ${d.meta.translation_error}` : ''}</p>
+          )}
           {qa.auto_fix?.rounds > 0 && (
             <p className="muted small" role="status">Automatyczna poprawka: {qa.auto_fix.rounds === 1 ? '1 runda' : `${qa.auto_fix.rounds} rundy`}, poprawione pola: {[...new Set(qa.auto_fix.history.flatMap(h => h.changed))].join(', ') || '—'}.
               {(qa.errors?.length > 0 || qa.warnings?.length > 0) ? ' Pozostałe uwagi poniżej wymagają decyzji redaktora (np. brak faktów).' : ' Kontrola nie ma uwag.'}{qa.auto_fix.failed ? ` Poprawka przerwana: ${qa.auto_fix.failed}` : ''}</p>
