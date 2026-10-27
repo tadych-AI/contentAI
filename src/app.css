@@ -188,3 +188,9 @@ td.path { max-width: none; }
 .slot-thumb span { position: absolute; left: 3px; top: 2px; font-size: 11px; background: rgba(255,255,255,.85); border-radius: 3px; padding: 0 4px; }
 .slot-thumb.on { border-color: var(--action); box-shadow: 0 0 0 2px var(--water-light); }
 .slot-thumb:hover:not(:disabled), .slot-thumb:focus-visible { border-color: var(--action); }
+
+/* Rodziny eMAG – podgląd połączenia wariantów */
+.family-plan { margin: 0 0 12px; }
+.plan-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.plan-group { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fff; display: flex; flex-direction: column; gap: 2px; }
+.plan-group .mono, .content td.small.mono { white-space: normal; overflow-wrap: anywhere; }

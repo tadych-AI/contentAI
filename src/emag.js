@@ -161,3 +161,77 @@ export function rowProblems(fileType, row, chars) {
   if (missing.length) p.push(`brak obowiązkowych charakterystyk: ${missing.join(', ')}`)
   return p
 }
+
+// ===== Rodziny eMAG: jak warianty rodziny z aplikacji połączą się w eMAG =====
+// Najpierw cała rodzina; gdy żaden typ eMAG nie rozróżnia wariantów – podział wg cechy, której eMAG nie opisuje
+// (kolor akcesoriów, potem kolor, strona, wymiar), tak by w każdej podrodzinie typ eMAG działał.
+const SPLITS = [['kolor_akcesoriow', 'kolor akcesoriów'], ['kolor', 'kolor'], ['strona', 'strona'], ['wymiar', 'wymiar']]
+const ACC_HU = { 'biały': 'fehér', 'czarny': 'fekete', 'złoty': 'arany', 'chrom': 'króm', 'grafit': 'grafit', 'szary': 'szürke', 'miedziany': 'réz', 'nikiel': 'nikkel', 'inox': 'inox', 'antracyt': 'antracit', 'beżowy': 'bézs' }
+const SIDE_HU = { lewa: 'bal oldali', prawa: 'jobb oldali' }
+export const SPLIT_LABEL = Object.fromEntries(SPLITS)
+
+function typeAttrKeys(types, chars, label) {
+  const t = (types || []).find(x => x.label === label)
+  return t ? t.attributes.map(a => ({ name: a.name, key: chars.find(c => fold(c.name) === fold(a.name))?.key })) : []
+}
+function selectorOf(types, chars, label, items) {
+  return typeAttrKeys(types, chars, label).map(a => ({ name: a.name, values: [...new Set(items.map(m => m.values?.[a.key]?.value).filter(Boolean))].sort((x, y) => String(x).localeCompare(String(y), 'hu', { numeric: true })) }))
+}
+// typ wymuszony ręcznie – ważny, jeśli rozróżnia warianty
+function typeFits(types, chars, label, items) {
+  const keys = typeAttrKeys(types, chars, label).map(a => a.key)
+  if (!keys.length || keys.some(k => !k)) return false
+  const tuples = items.map(m => keys.map(k => m.values?.[k]?.value ?? ''))
+  return !tuples.some(tp => tp.some(x => !x)) && new Set(tuples.map(tp => tp.join('|'))).size === items.length
+}
+export function splitSuffix(key, value) {
+  if (!key || !value) return ''
+  if (key === 'kolor_akcesoriow') return `${ACC_HU[value] || value} kiegészítőkkel`
+  if (key === 'kolor') return ACC_HU[value] || value
+  if (key === 'strona') return SIDE_HU[value] || value
+  if (key === 'wymiar') return `${value} cm`
+  return value
+}
+
+// items: [{ product, values }] → { mode: 'cala' | 'podzial' | 'osobno' | 'jeden', split_key, groups: [{ split_value, items, type, selector }], why }
+export function planEmagFamilies(types, chars, items, { forcedType = null } = {}) {
+  if (items.length < 2) return { mode: 'jeden', groups: [], why: 'rodzina jednoproduktowa – produkt trafi do eMAG bez rodziny' }
+  const whole = forcedType && typeFits(types, chars, forcedType, items) ? { type: forcedType } : chooseFamilyType(types, chars, items)
+  if (whole.type) return { mode: 'cala', split_key: '', groups: [{ split_value: '', items, type: whole.type, selector: selectorOf(types, chars, whole.type, items) }] }
+  for (const [key] of SPLITS) {
+    const val = m => variantAttrs(m.product?.name)[key] || ''
+    const vals = new Set(items.map(val))
+    if (vals.size < 2) continue
+    const groups = [...vals].map(v => ({ split_value: v, items: items.filter(m => val(m) === v) }))
+    let ok = true
+    for (const g of groups) {
+      if (g.items.length < 2) { g.type = null; continue }
+      const r = chooseFamilyType(types, chars, g.items)
+      if (!r.type) { ok = false; break }
+      g.type = r.type; g.selector = selectorOf(types, chars, r.type, g.items)
+    }
+    if (ok && groups.some(g => g.type)) return { mode: 'podzial', split_key: key, groups: groups.sort((a, b) => a.split_value.localeCompare(b.split_value, 'pl')) }
+  }
+  return { mode: 'osobno', groups: [], why: whole.why || 'żaden typ rodziny eMAG ani podział nie rozróżnia wariantów – produkty trafią osobno' }
+}
+
+// Zmiany w spisie rodzin eMAG dla jednej rodziny z aplikacji: { upserts: [...], removals: [id], conflicts: [...] }
+export function registryChanges(family, plan, existing, { channelId, categoryId, baseName }) {
+  const upserts = [], conflicts = [], keep = new Set()
+  for (const g of plan.groups.filter(x => x.type)) {
+    const row = existing.find(r => r.split_value === g.split_value && r.status !== 'nieaktualna') || existing.find(r => r.split_value === g.split_value)
+    const product_ids = g.items.map(m => m.product.id).sort()
+    const suffix = splitSuffix(plan.split_key, g.split_value)
+    const name = suffix ? `${baseName} – ${suffix}` : baseName
+    if (row?.first_exported_at && row.type !== g.type) { conflicts.push(`#${row.id}: wysłana z typem „${row.type}”, teraz pasuje „${g.type}” – sprawdź charakterystyki`); keep.add(row.id); continue }
+    if (row) keep.add(row.id)
+    const next = { ...(row ? { id: row.id } : {}), channel_id: channelId, family_id: family.id, category_id: categoryId, split_key: plan.split_key || '', split_value: g.split_value,
+      name: row?.name || name,
+      type: g.type, product_ids, selector: g.selector || [], status: row?.first_exported_at ? 'wyslana' : 'zaplanowana' }
+    const same = row && row.type === next.type && row.name === next.name && JSON.stringify([...(row.product_ids || [])].sort()) === JSON.stringify(product_ids) && JSON.stringify(row.selector || []) === JSON.stringify(next.selector) && row.status === next.status && (row.split_key || '') === next.split_key
+    if (!same) upserts.push(next)
+  }
+  const removals = existing.filter(r => !keep.has(r.id) && !r.first_exported_at).map(r => r.id)
+  const stale = existing.filter(r => !keep.has(r.id) && r.first_exported_at && r.status !== 'nieaktualna').map(r => ({ ...r, status: 'nieaktualna' }))
+  return { upserts: [...upserts, ...stale], removals, conflicts }
+}

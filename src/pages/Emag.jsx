@@ -1,9 +1,9 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, plError, plN, fmtDate, fetchAll } from '../supabase.js'
 import { runJob } from '../jobs.js'
 import { parseTemplate, fillTemplate, FILE_TYPE_LABEL } from '../emagXlsx.js'
-import { presetCharacteristics, chooseFamilyType, characteristicIssues, buildRow, rowProblems, NUMERIC_COLUMNS, matchAllowed } from '../emag.js'
+import { presetCharacteristics, chooseFamilyType, characteristicIssues, buildRow, rowProblems, NUMERIC_COLUMNS, matchAllowed, planEmagFamilies, registryChanges, SPLIT_LABEL } from '../emag.js'
 import { factsFor } from '../gen.js'
 import DrainLoader from '../components/DrainLoader.jsx'
 
@@ -87,11 +87,11 @@ function FamilyEditor({ fam, members, chars, familyTypes, saved, canApprove, onS
   return (
     <div style={{ padding: '8px 0 14px' }}>
       <div className="filter-grid">
-        <label>Nazwa rodziny w eMAG (HU, bez wymiarów i koloru)<input value={name} onChange={e => setName(e.target.value)} placeholder={fam.name} /></label>
+        <label>Nazwa bazowa rodziny w eMAG (HU, bez wymiarów i koloru; podrodziny dostają dopisek)<input value={name} onChange={e => setName(e.target.value)} placeholder={fam.name} /></label>
         <label>Typ rodziny eMAG<select value={type} onChange={e => setType(e.target.value)}>
-          <option value="">{auto.type ? `automatycznie: ${auto.type}` : 'brak – produkty osobno'}</option>
+          <option value="">{auto.type ? `automatycznie: ${auto.type}` : 'automatycznie (podział na podrodziny, gdy potrzeba)'}</option>
           {familyTypes.map(t => <option key={t.id} value={t.label}>{t.label}</option>)}
-        </select>{!auto.type && members.length > 1 && <span className="field-help hint-inline">{auto.why}</span>}</label>
+        </select>{!auto.type && members.length > 1 && <span className="field-help">Cała rodzina nie mieści się w jednym typie eMAG – aplikacja spróbuje podzielić ją na podrodziny (podgląd powyżej).</span>}</label>
       </div>
       <div className="row-form" style={{ margin: '10px 0' }}><label className="check"><input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)} /> pokaż wszystkie charakterystyki ({chars.length})</label></div>
       <div className="variant-cards">
@@ -128,6 +128,90 @@ function FamilyEditor({ fam, members, chars, familyTypes, saved, canApprove, onS
   )
 }
 
+
+// ---------- rodziny eMAG: podsumowanie w tabeli i podgląd połączenia ----------
+const famNo = r => `#${r.id}`
+function FamilyPlanSummary({ plan, reg, size }) {
+  if (size < 2) return <span className="muted">—</span>
+  if (!plan) return <span className="muted">uzupełnij charakterystyki</span>
+  const live = reg.filter(r => r.status !== 'nieaktualna')
+  if (plan.mode === 'osobno') return <span className="hint-inline" title={plan.why}>nie połączy się – produkty osobno</span>
+  if (plan.mode === 'cala') return <span>{live[0] ? <strong className="mono">{famNo(live[0])}</strong> : 'nowa'} · {plan.groups[0].selector.map(x => x.name).join(' + ')}</span>
+  return <span>{plan.groups.filter(g => g.type).length} rodziny wg: {SPLIT_LABEL[plan.split_key]} {live.length ? <span className="mono">({live.map(famNo).join(', ')})</span> : ''}</span>
+}
+function FamilyPlan({ plan, reg, skuOf }) {
+  if (!plan) return <p className="muted small">Jak eMAG połączy warianty – widoczne po uzupełnieniu charakterystyk wszystkich wariantów.</p>
+  if (plan.mode === 'jeden') return null
+  if (plan.mode === 'osobno') return <p className="hint small">{plan.why}</p>
+  const rowFor = g => reg.find(r => r.split_value === g.split_value && r.status !== 'nieaktualna')
+  return (
+    <div className="family-plan">
+      <p className="small" style={{ margin: '4px 0 8px' }}><strong>Jak eMAG połączy warianty</strong>{plan.mode === 'podzial' ? ` – podział wg: ${SPLIT_LABEL[plan.split_key]} (eMAG nie ma takiej charakterystyki, więc każda wartość to osobna karta z wyborem wariantu)` : ''}</p>
+      <div className="plan-groups">{plan.groups.map(g => { const r = rowFor(g); return (
+        <div key={g.split_value || 'all'} className="plan-group">
+          <div><strong className="mono">{r ? famNo(r) : 'nowa'}</strong> {r?.name || ''}{r?.first_exported_at && <span className="tag okt" style={{ marginLeft: 6 }}>wysłana</span>}</div>
+          {g.type ? <>
+            <div className="muted small">typ: {g.type}</div>
+            <div className="small">klient wybiera: {g.selector.map(x => `${x.name}: ${x.values.join(' / ')}`).join(' · ')}</div>
+          </> : <div className="hint small">1 produkt – trafi bez rodziny</div>}
+          <div className="small mono">{g.items.map(m => skuOf.get(m.product.id) || m.product.sku).join(', ')}</div>
+        </div>) })}</div>
+    </div>
+  )
+}
+
+// ---------- spis rodzin eMAG ----------
+function FamilyRegistry({ registry, families, skuOf, onChanged }) {
+  const [q, setQ] = useState('')
+  const [status, setStatus] = useState('')
+  const [edit, setEdit] = useState(null)
+  const [msg, setMsg] = useState(null)
+  const famName = id => families.find(f => f.id === id)?.name
+  const STATUS = { zaplanowana: 'do wysłania', wyslana: 'wysłana', nieaktualna: 'nieaktualna' }
+  const rows = registry.filter(r => (!status || r.status === status) && (!q.trim() || [String(r.id), r.name, famName(r.family_id), ...(r.product_ids || []).map(id => skuOf.get(id))].some(x => String(x || '').toLowerCase().includes(q.trim().toLowerCase()))))
+  async function saveName(r) {
+    const name = edit.value.trim(); setEdit(null)
+    if (!name || name === r.name) return
+    const { error } = await supabase.from('emag_families').update({ name }).eq('id', r.id)
+    setMsg(error ? { type: 'error', text: plError(error.message) } : { type: 'ok', text: r.first_exported_at ? `Zmieniono nazwę #${r.id} – w eMAG zmieni się po wysłaniu pliku „Rodziny produktów”.` : `Zmieniono nazwę #${r.id}.` })
+    onChanged()
+  }
+  function csv() {
+    const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const lines = [['Nr rodziny eMAG', 'Nazwa rodziny eMAG', 'Rodzina w aplikacji', 'Podział', 'Wartość podziału', 'Typ rodziny', 'Wybór wariantu', 'SKU', 'Status', 'Pierwsze wysłanie'].map(esc).join(';'),
+      ...rows.map(r => [r.id, r.name, famName(r.family_id) || '(rozwiązana)', SPLIT_LABEL[r.split_key] || '', r.split_value, r.type, (r.selector || []).map(x => `${x.name}: ${x.values.join('/')}`).join(' | '), (r.product_ids || []).map(id => skuOf.get(id) || id).join(', '), STATUS[r.status], r.first_exported_at ? fmtDate(r.first_exported_at) : ''].map(esc).join(';'))]
+    const url = URL.createObjectURL(new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a'); a.href = url; a.download = `rodziny-emag-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000)
+  }
+  return (
+    <div className="panel">
+      <div className="panel-head"><h2 style={{ margin: 0 }}>Spis rodzin eMAG</h2><button className="btn ghost" onClick={csv} disabled={!rows.length}>Pobierz CSV</button></div>
+      <p className="muted small">Numer rodziny trafia do pliku eMAG (kolumna family_id) i łączy warianty w jedną kartę. Numer nadany raz nie zmienia się i nie jest używany ponownie; po pierwszym wysłaniu typ i podział są zablokowane. Rodziny dopisują się same, gdy wszystkie warianty mają uzupełnione charakterystyki.</p>
+      <div className="filter-grid">
+        <label>Szukaj (numer, nazwa, SKU)<input value={q} onChange={e => setQ(e.target.value)} /></label>
+        <label>Status<select value={status} onChange={e => setStatus(e.target.value)}><option value="">wszystkie</option>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+      </div>
+      {msg && <p className={msg.type} role="status">{msg.text}</p>}
+      {rows.length === 0 ? <p className="hint">{registry.length ? 'Brak rodzin dla tego filtra.' : 'Spis jest pusty – uzupełnij charakterystyki wariantów rodzin na zakładce Eksport.'}</p> : (
+        <table className="compact">
+          <thead><tr><th className="num">Nr</th><th>Nazwa rodziny eMAG</th><th>Rodzina w aplikacji</th><th>Typ i wybór wariantu</th><th>SKU</th><th>Status</th></tr></thead>
+          <tbody>{rows.map(r => (
+            <tr key={r.id}>
+              <td className="num mono"><strong>{r.id}</strong></td>
+              <td className="name">{edit?.id === r.id
+                ? <input autoFocus value={edit.value} onChange={e => setEdit({ id: r.id, value: e.target.value })} onBlur={() => saveName(r)} onKeyDown={e => { if (e.key === 'Enter') saveName(r); if (e.key === 'Escape') setEdit(null) }} style={{ margin: 0 }} />
+                : <button className="row-toggle" title="Kliknij, aby zmienić nazwę" onClick={() => setEdit({ id: r.id, value: r.name })}>{r.name}</button>}</td>
+              <td>{famName(r.family_id) || <span className="muted">rozwiązana</span>}{r.split_value && <span className="muted small" style={{ display: 'block' }}>{SPLIT_LABEL[r.split_key]}: {r.split_value}</span>}</td>
+              <td className="small">{r.type}<span style={{ display: 'block' }}>{(r.selector || []).map(x => `${x.name}: ${x.values.join(' / ')}`).join(' · ')}</span></td>
+              <td className="small mono">{(r.product_ids || []).map(id => skuOf.get(id) || '?').join(', ')}</td>
+              <td>{r.status === 'wyslana' ? <span className="tag okt">wysłana {r.first_exported_at ? fmtDate(r.first_exported_at).split(',')[0] : ''}</span> : r.status === 'nieaktualna' ? <span className="tag warn" title="Skład rodziny zmienił się po wysłaniu – numer zostaje zarezerwowany">nieaktualna</span> : <span className="tag info">do wysłania</span>}</td>
+            </tr>))}</tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
 export default function Emag({ profile }) {
   const canEdit = ['akceptujacy', 'admin'].includes(profile?.role)
   const [data, setData] = useState(null)
@@ -139,13 +223,16 @@ export default function Emag({ profile }) {
   const [job, setJob] = useState(null)
   const [fileType, setFileType] = useState('create')
   const [includeIncomplete, setIncludeIncomplete] = useState(false)
+  const [tab, setTab] = useState('eksport')
+  const [syncMsg, setSyncMsg] = useState(null)
+  const lastSync = useRef('')
 
   async function load() {
     try {
       const { data: chs } = await supabase.from('channels').select('*').eq('active', true).order('code')
       const channel = (chs || []).find(c => c.code === 'emag_hu') || (chs || [])[0]
       if (!channel) throw new Error('Brak aktywnego kanału.')
-      const [tpls, fams, prods, chars, descs, facts, titlesRows, brands, cats, exports] = await Promise.all([
+      const [tpls, fams, prods, chars, descs, facts, titlesRows, brands, cats, exports, registry, skus] = await Promise.all([
         supabase.from('emag_templates').select('id, channel_id, file_type, category_id, template_id, category_name, file_name, structure, uploaded_at').eq('channel_id', channel.id).order('category_id'),
         fetchAll('product_families', 'id, name, brand_id, bl_category_id, lead_product_id, status, emag_family_id, emag_family_name, emag_family_type', x => x.eq('status', 'zatwierdzone').order('name')),
         fetchAll('products', PCOLS, x => x.not('family_id', 'is', null)),
@@ -155,13 +242,15 @@ export default function Emag({ profile }) {
         fetchAll('product_titles', 'product_id, title, status', x => x.eq('channel_id', channel.id)),
         fetchAll('brands', 'id, name'), fetchAll('bl_categories', 'bl_category_id, path'),
         supabase.from('emag_exports').select('id, file_type, category_id, product_count, created_at').order('created_at', { ascending: false }).limit(5),
+        supabase.from('emag_families').select('*').eq('channel_id', channel.id).order('id'),
+        fetchAll('products', 'id, sku'),
       ])
       if (tpls.error) throw tpls.error
       const members = new Map(); prods.forEach(p => { if (!members.has(p.family_id)) members.set(p.family_id, []); members.get(p.family_id).push(p) })
       members.forEach(list => list.sort((a, b) => a.sku.localeCompare(b.sku)))
       const desc = new Map(); descs.forEach(d => { if (!desc.has(d.product_id)) desc.set(d.product_id, d) })
       const saved = new Map(chars.map(c => [c.product_id, c]))
-      setData({ channel, templates: tpls.data || [], families: fams, members, desc, saved, facts, titles: new Map(titlesRows.map(t => [t.product_id, t])), brands: new Map(brands.map(b => [b.id, b.name])), cats: new Map(cats.map(c => [c.bl_category_id, c.path])), exports: exports.data || [] })
+      setData({ channel, templates: tpls.data || [], families: fams, members, desc, saved, facts, titles: new Map(titlesRows.map(t => [t.product_id, t])), brands: new Map(brands.map(b => [b.id, b.name])), cats: new Map(cats.map(c => [c.bl_category_id, c.path])), exports: exports.data || [], registry: registry.error ? null : (registry.data || []), registryError: registry.error?.message || '', skuOf: new Map(skus.map(x => [x.id, x.sku])) })
       if (!catId && (tpls.data || []).length) setCatId(String(tpls.data.find(t => t.file_type === 'create')?.category_id || tpls.data[0].category_id))
     } catch (e) { setError(plError(e.message)) }
   }
@@ -184,6 +273,49 @@ export default function Emag({ profile }) {
     const approved = ch.length === m.length && ch.every(x => x.status === 'zaakceptowany')
     return { m, descOk, filled: ch.length, missing, approved }
   }
+
+  // plan rodzin eMAG dla każdej rodziny z kompletem charakterystyk w tej kategorii
+  const plans = useMemo(() => {
+    const out = new Map()
+    if (!data || !base) return out
+    for (const f of data.families) {
+      const m = data.members.get(f.id) || []
+      const items = m.map(p => ({ product: p, values: data.saved.get(p.id)?.values || {}, ok: String(data.saved.get(p.id)?.marketplace_category_id) === catId }))
+      if (!items.length || items.some(x => !x.ok)) continue
+      out.set(f.id, planEmagFamilies(familyTypes, chars, items, { forcedType: f.emag_family_type || null }))
+    }
+    return out
+  }, [data, catId])
+  const regOf = fid => (data?.registry || []).filter(r => r.family_id === fid)
+
+  // spis rodzin eMAG nadąża za planem: nowe rodziny dostają numery, zmiany składu się zapisują, niewysłane nieaktualne znikają
+  useEffect(() => {
+    if (!data?.registry || !base || !plans.size) return
+    let cancelled = false
+    ;(async () => {
+      const ups = [], dels = [], conflicts = []
+      for (const [fid, plan] of plans) {
+        const f = data.families.find(x => x.id === fid)
+        const ch = registryChanges(f, plan, regOf(fid), { channelId: data.channel.id, categoryId: base.category_id, baseName: f.emag_family_name || f.name })
+        ups.push(...ch.upserts); dels.push(...ch.removals); conflicts.push(...ch.conflicts.map(c => `${f.name} ${c}`))
+      }
+      if (!ups.length && !dels.length) { if (conflicts.length) setSyncMsg({ type: 'hint', text: conflicts.join(' · ') }); return }
+      const sig = JSON.stringify([ups, dels])
+      if (lastSync.current === sig) return   // ta sama zmiana już próbowana (np. błąd zapisu) – bez pętli
+      lastSync.current = sig
+      const strip = ({ created_at, updated_at, ...r }) => r
+      const withId = ups.filter(u => u.id).map(strip), fresh = ups.filter(u => !u.id).map(strip)
+      let err = null
+      if (dels.length) { const r = await supabase.from('emag_families').delete().in('id', dels); err = err || r.error }
+      for (const u of withId) { const { id, ...rest } = u; const r = await supabase.from('emag_families').update(rest).eq('id', id); err = err || r.error }
+      if (fresh.length) { const r = await supabase.from('emag_families').insert(fresh); err = err || r.error }
+      if (cancelled) return
+      const reg = await supabase.from('emag_families').select('*').eq('channel_id', data.channel.id).order('id')
+      setData(d => ({ ...d, registry: reg.data || d.registry }))
+      setSyncMsg(err ? { type: 'error', text: `Spis rodzin eMAG: ${plError(err.message)}` } : conflicts.length ? { type: 'hint', text: conflicts.join(' · ') } : null)
+    })()
+    return () => { cancelled = true }
+  }, [plans, data?.registry])
 
   async function fillCharacteristics() {
     const fams = data.families.filter(f => sel.has(f.id))
@@ -213,19 +345,21 @@ export default function Emag({ profile }) {
       const { data: full, error } = await supabase.from('emag_templates').select('file_b64, structure').eq('id', tpl.id).single()
       if (error) throw error
       const structure = { ...full.structure, characteristics: full.structure.characteristics || chars }
-      const rows = [], skipped = [], famIds = []
+      const rows = [], skipped = [], famIds = [], usedFamilies = new Set()
       for (const f of data.families.filter(x => sel.has(x.id))) {
         const m = data.members.get(f.id) || []
-        const vals = m.map(p => ({ values: data.saved.get(p.id)?.values || {} }))
-        const type = f.emag_family_type || chooseFamilyType(structure.family_types, structure.characteristics, vals).type
-        const family = { id: f.emag_family_id, name: f.emag_family_name || f.name, type, size: m.length }
+        const reg = regOf(f.id).filter(r => r.status !== 'nieaktualna')
         famIds.push(f.id)
         for (const p of m) {
+          const r = reg.find(x => (x.product_ids || []).includes(p.id))
+          const family = r ? { id: r.id, name: r.name, type: r.type, size: r.product_ids.length } : null
+          const type = family?.type
+          if (r) usedFamilies.add(r.id)
           const tt = data.titles.get(p.id)
           const row = buildRow(fileType, { product: p, description: data.desc.get(p.id), title: tt?.status === 'zatwierdzony' ? tt.title : '', brand: data.channel.limits?.export_brand || data.brands.get(p.brand_id) || data.brands.get(f.brand_id) || '', values: data.saved.get(p.id)?.values || {}, family, template: structure })
           const probs = rowProblems(fileType, row, structure.characteristics)
           if (tt?.status !== 'zatwierdzony' && row.name) probs.push(`tytuł z opisu – brak zatwierdzonego tytułu w module Tytuły eMAG`)
-          if (m.length > 1 && !type) probs.push('rodzina bez typu eMAG – produkt trafi jako osobny')
+          if (m.length > 1 && !type) probs.push(`rodzina bez typu eMAG – produkt trafi jako osobny${plans.get(f.id)?.why ? ` (${plans.get(f.id).why})` : !plans.get(f.id) ? ' (uzupełnij charakterystyki wszystkich wariantów)' : ''}`)
           if (probs.length && !includeIncomplete && probs.some(x => !x.startsWith('rodzina bez typu') && !x.startsWith('tytuł z opisu'))) skipped.push({ sku: p.sku, problems: probs })
           else { rows.push(row); if (probs.length) skipped.push({ sku: p.sku, problems: probs, included: true }) }
         }
@@ -235,6 +369,10 @@ export default function Emag({ profile }) {
       const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')
       download(bytes, `emag-${fileType}-${tpl.category_id}-${stamp}.xlsx`)
       const { data: { session } } = await supabase.auth.getSession()
+      if (usedFamilies.size && fileType !== 'update') {
+        const now = new Date().toISOString()
+        for (const id of usedFamilies) { const r = (data.registry || []).find(x => x.id === id); await supabase.from('emag_families').update({ status: 'wyslana', last_exported_at: now, ...(r?.first_exported_at ? {} : { first_exported_at: now }) }).eq('id', id) }
+      }
       await supabase.from('emag_exports').insert({ channel_id: data.channel.id, emag_template_id: tpl.id, file_type: fileType, category_id: tpl.category_id, family_ids: famIds, product_count: rows.length, skipped, created_by: session.user.id })
       setJob({ ok: `Wygenerowano plik z ${plN(rows.length, 'produktem', 'produktami', 'produktami')}. Wgraj go w eMAG Marketplace → Import XLS.`, skipped })
       load()
@@ -249,6 +387,13 @@ export default function Emag({ profile }) {
     <section className="page wide">
       <h1>Eksport do eMAG</h1>
       <p className="muted lead">Charakterystyki produktów (z danych Baselinkera dopasowanych do słowników eMAG i uzupełnione przez AI), rodziny eMAG i generowanie pliku importu. Do pliku trafiają zaakceptowane opisy HU i zatwierdzone tytuły (ekran Tytuły eMAG); marka w pliku: {data.channel.limits?.export_brand || 'z Baselinkera'}. Stan: 1 szt., czas wysyłki: 2 dni, gwarancja z Baselinkera; ceny, VAT i dane GPSR na razie puste.</p>
+      <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>
+        <button role="tab" aria-selected={tab === 'eksport'} className={tab === 'eksport' ? 'tab on' : 'tab'} onClick={() => setTab('eksport')}>Eksport</button>
+        <button role="tab" aria-selected={tab === 'spis'} className={tab === 'spis' ? 'tab on' : 'tab'} onClick={() => setTab('spis')}>Spis rodzin eMAG <span className="count">{(data.registry || []).filter(r => r.status !== 'nieaktualna').length}</span></button>
+      </div>
+      {data.registryError && <p className="error">Spis rodzin eMAG niedostępny – uruchom migrację 012_rodziny_emag.sql. ({data.registryError})</p>}
+      {syncMsg && <p className={syncMsg.type} role="status">{syncMsg.text}</p>}
+      {tab === 'spis' ? <FamilyRegistry registry={data.registry || []} families={data.families} skuOf={data.skuOf} onChanged={load} /> : (<>
       <TemplatesPanel channel={data.channel} templates={data.templates} canEdit={canEdit} onChanged={load} />
 
       {base && (<>
@@ -266,9 +411,8 @@ export default function Emag({ profile }) {
           </div>
           <div className="table-wrap">
             <table className="compact resp">
-              <thead><tr><th className="check" /><th>Rodzina</th><th className="num">Warianty</th><th>Opisy HU</th><th>Charakterystyki</th><th>Typ rodziny eMAG</th><th className="num">ID rodziny</th></tr></thead>
+              <thead><tr><th className="check" /><th>Rodzina</th><th className="num">Warianty</th><th>Opisy HU</th><th>Charakterystyki</th><th>Rodziny eMAG</th></tr></thead>
               <tbody>{list.map(f => { const st = famState(f)
-                const auto = st.filled ? chooseFamilyType(familyTypes, chars, st.m.map(p => ({ values: data.saved.get(p.id)?.values || {} }))) : null
                 return (
                   <Fragment key={f.id}>
                     <tr>
@@ -277,10 +421,10 @@ export default function Emag({ profile }) {
                       <td className="num" data-label="Warianty">{st.m.length}</td>
                       <td data-label="Opisy HU">{st.descOk === st.m.length ? <span className="tag okt">{st.descOk}/{st.m.length}</span> : <span className="tag warn">{st.descOk}/{st.m.length} zaakceptowanych</span>}</td>
                       <td data-label="Charakterystyki">{!st.filled ? <span className="muted small">nie uzupełniono</span> : st.approved ? <span className="tag okt">zatwierdzone</span> : st.missing ? <span className="tag warn">braki obowiązkowe: {st.missing}</span> : <span className="tag info">{st.filled}/{st.m.length} do weryfikacji</span>}</td>
-                      <td className="small" data-label="Typ rodziny eMAG">{st.m.length < 2 ? <span className="muted">—</span> : f.emag_family_type || (auto?.type ? <span title="dobrany automatycznie">{auto.type}</span> : <span className="hint-inline">{st.filled ? 'brak pasującego typu' : '—'}</span>)}</td>
-                      <td className="num mono" data-label="ID rodziny">{f.emag_family_id}</td>
+                      <td className="small" data-label="Rodziny eMAG"><FamilyPlanSummary plan={plans.get(f.id)} reg={regOf(f.id)} size={st.m.length} /></td>
                     </tr>
-                    {open === f.id && <tr className="detail-row"><td colSpan={7}>
+                    {open === f.id && <tr className="detail-row"><td colSpan={6}>
+                      <FamilyPlan plan={plans.get(f.id)} reg={regOf(f.id)} skuOf={data.skuOf} />
                       <FamilyEditor key={`${f.id}-${catId}-${st.filled}`} fam={{ ...f, _channel: data.channel.id, _category: base.category_id }} members={st.m} chars={chars} familyTypes={familyTypes} saved={data.saved} canApprove={canEdit} onSaved={load} />
                     </td></tr>}
                   </Fragment>
@@ -290,9 +434,10 @@ export default function Emag({ profile }) {
         </div>
       </>)}
 
+      </>)}
       {data.exports.length > 0 && <p className="muted small">Ostatnie pliki: {data.exports.map(x => `${fmtDate(x.created_at)} ${x.file_type} (${x.product_count})`).join(' · ')}</p>}
 
-      {(sel.size > 0 || job) && base && (
+      {tab === 'eksport' && (sel.size > 0 || job) && base && (
         <div className="import-bar" role="region" aria-label="Akcje eMAG">
           <div style={{ flex: 1 }}>
             {job?.busy ? <span className="progress-line" role="status">{job.progress}</span>
