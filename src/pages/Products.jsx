@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, plError, plN, fmtDate, fetchAll } from '../supabase.js'
-import { loadDicts } from '../catalog.js'
+import { loadDicts, importProducts } from '../catalog.js'
 import DrainLoader from '../components/DrainLoader.jsx'
 
 const PAGE = 100
-const COLS = 'id, baselinker_product_id, sku, ean, name, bl_category_id, brand_id, bl_parent_id, is_bundle, features, images, import_flags, synced_at, source_hash, family_id'
+const COLS = 'id, baselinker_product_id, sku, ean, name, bl_category_id, brand_id, bl_parent_id, is_bundle, features, images, import_flags, synced_at, source_hash, family_id, bundle_items'
 
 // Opis z BL to HTML – w podglądzie pokazujemy sam tekst (bez stylów i skryptów)
 function htmlToText(html) {
@@ -82,6 +82,19 @@ export default function Products({ profile }) {
   const [page, setPage] = useState(0)
   const [open, setOpen] = useState(null)
   const [famF, setFamF] = useState('all')
+  const [sync, setSync] = useState(null)   // { busy, text, type }
+
+  // Odświeżenie składników wszystkich zestawów z BL – gratisy rozpoznawane po słowie „gratis” w nazwie składnika
+  async function refreshBundles() {
+    const ids = data.products.filter(p => p.is_bundle).map(p => p.baselinker_product_id)
+    if (!ids.length) return
+    setSync({ busy: true, text: 'Pobieranie składników z BL…' })
+    try {
+      const r = await importProducts(ids, { onProgress: t => setSync({ busy: true, text: `Pobieranie składników z BL – ${t}…` }) })
+      await load()
+      setSync({ type: 'ok', text: `Odświeżono ${plN(r.imported || ids.length, 'zestaw', 'zestawy', 'zestawów')}. Gratisy oznaczono na podstawie słowa „gratis” w nazwie składnika (ręczne oznaczenia zostały zachowane). Aby gratis trafił do opisu, wyciągnij ponownie fakty dla tych rodzin.` })
+    } catch (e) { setSync({ type: 'error', text: plError(e.message) }) }
+  }
 
   async function load() {
     try {
@@ -98,7 +111,7 @@ export default function Products({ profile }) {
     return data.products.filter(p =>
       (!s || p.name.toLowerCase().includes(s) || p.sku.toLowerCase().includes(s) || (p.ean || '').includes(s)) &&
       (!brand || p.brand_id === brand) && (!cat || String(p.bl_category_id) === cat) &&
-      (kind === 'all' || (kind === 'bundle' ? p.is_bundle : kind === 'variant' ? !!p.bl_parent_id : !p.is_bundle && !p.bl_parent_id)) &&
+      (kind === 'all' || (kind === 'bundle' ? p.is_bundle : kind === 'gift' ? p.is_bundle && (p.bundle_items || []).some(b => b.gift) : kind === 'variant' ? !!p.bl_parent_id : !p.is_bundle && !p.bl_parent_id)) &&
       (!flagged || (p.import_flags || []).length > 0) &&
       (famF === 'all' || (famF === 'bez' ? !p.family_id : !!p.family_id)))
   }, [data, q, brand, cat, kind, flagged, famF])
@@ -127,7 +140,7 @@ export default function Products({ profile }) {
           <label>Szukaj (nazwa, SKU, EAN)<input value={q} onChange={e => setQ(e.target.value)} /></label>
           <label>Marka<select value={brand} onChange={e => setBrand(e.target.value)}><option value="">wszystkie</option>{usedBrands.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select></label>
           <label>Kategoria<select value={cat} onChange={e => setCat(e.target.value)}><option value="">wszystkie</option>{usedCats.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select></label>
-          <label>Rodzaj<select value={kind} onChange={e => setKind(e.target.value)}><option value="all">wszystkie</option><option value="single">pojedyncze</option><option value="variant">warianty BL</option><option value="bundle">zestawy (bundle)</option></select></label>
+          <label>Rodzaj<select value={kind} onChange={e => setKind(e.target.value)}><option value="all">wszystkie</option><option value="single">pojedyncze</option><option value="variant">warianty BL</option><option value="bundle">zestawy (bundle)</option><option value="gift">zestawy z gratisem</option></select></label>
           <label>Rodzina<select value={famF} onChange={e => setFamF(e.target.value)}><option value="all">wszystkie</option><option value="bez">bez rodziny</option><option value="z">w rodzinie</option></select></label>
           <label className="check span-2" style={{ marginTop: 14 }}><input type="checkbox" checked={flagged} onChange={e => setFlagged(e.target.checked)} /> Tylko z uwagami do danych</label>
         </div>
@@ -135,8 +148,12 @@ export default function Products({ profile }) {
       <div className="panel">
         <div className="result-head">
           <p className="summary" style={{ margin: 0 }}><strong>{plN(list.length, 'produkt', 'produkty', 'produktów')}</strong>{list.length !== data.products.length && <span className="muted"> z {data.products.length}</span>}</p>
-          <Link className="link-dark" to="/rodziny">Rodziny produktów →</Link>
+          <span className="row-form" style={{ gap: 12 }}>
+            {data.products.some(p => p.is_bundle) && <button className="link-dark" disabled={sync?.busy} onClick={refreshBundles} title="Pobiera z Baselinkera dane składników wszystkich zestawów i oznacza gratisy (składniki ze słowem „gratis” w nazwie)">{sync?.busy ? 'Pobieranie…' : 'Odśwież składniki zestawów i gratisy'}</button>}
+            <Link className="link-dark" to="/rodziny">Rodziny produktów →</Link>
+          </span>
         </div>
+        {sync?.text && <p className={(sync.type || 'muted') + ' small'} role="status">{sync.text}</p>}
         <div className="table-wrap">
           <table className="compact">
             <thead><tr><th>SKU</th><th>Nazwa</th><th>Marka</th><th>Kategoria</th><th className="num">Parametry</th><th className="num">Zdjęcia</th><th>Rodzina</th><th>Uwagi do danych</th></tr></thead>
@@ -145,7 +162,7 @@ export default function Products({ profile }) {
                 <Fragment key={p.id}>
                   <tr>
                     <td className="mono">{p.sku}</td>
-                    <td className="name"><button className="row-toggle" aria-expanded={open === p.id} onClick={() => setOpen(open === p.id ? null : p.id)}>{p.name}</button>{p.is_bundle && <span className="tag info gap">zestaw</span>}{p.bl_parent_id && <span className="tag gap">wariant</span>}</td>
+                    <td className="name"><button className="row-toggle" aria-expanded={open === p.id} onClick={() => setOpen(open === p.id ? null : p.id)}>{p.name}</button>{p.is_bundle && <span className="tag info gap">zestaw</span>}{p.is_bundle && (p.bundle_items || []).filter(b => b.gift).map(b => <span key={b.bl_id} className="tag okt gap" title={b.gift_source ? `rozpoznano: ${b.gift_source}` : ''}>gratis: {b.name || b.sku}</span>)}{p.bl_parent_id && <span className="tag gap">wariant</span>}</td>
                     <td>{data.brands.get(p.brand_id) || '—'}</td>
                     <td className="path">{data.dicts.catById.get(p.bl_category_id)?.path || '—'}</td>
                     <td className="num">{Object.keys(p.features || {}).length}</td>
