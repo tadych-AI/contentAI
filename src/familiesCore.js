@@ -120,7 +120,7 @@ export function proposeFamilies(products, { brandName = () => '', catPath = () =
     // wiodący: najdłuższy opis, przy remisie – wariant biały / bez koloru
     const lead = [...items].sort((a, b) => (b.desc_len || 0) - (a.desc_len || 0) || (a.attrs.kolor === 'biały' ? -1 : 0) - (b.attrs.kolor === 'biały' ? -1 : 0))[0]
     const words = key.startsWith('n:') ? key.split('|').pop() : ''
-    const label = words ? words.replace(/\b\p{L}/gu, c => c.toUpperCase()) : lead.name
+    const label = words ? words.replace(/(^|\s)\p{L}/gu, c => c.toUpperCase()) : lead.name
     const stems = new Set(items.map(i => skuStem(i.sku)))
     out.push({
       key, name: label, brand_id: lead.brand_id, bl_category_id: lead.bl_category_id, items, lead_id: lead.id, varying,

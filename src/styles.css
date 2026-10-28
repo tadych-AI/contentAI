@@ -617,3 +617,8 @@ a .dnode.sku:hover rect:first-child { stroke: var(--action); }
 .login-tub { margin: 8px 0 18px; }
 .job-card .bathtub { margin-bottom: 6px; }
 @media (prefers-reduced-motion: reduce) { .bathtub .tub-level, .bathtub .tub-wave, .bathtub .tub-stream { animation: none !important; } .bathtub.filling .tub-stream { opacity: 1; } }
+
+/* ręczne rodziny na ekranie Produkty */
+p.warn { color: var(--warn); background: var(--warn-bg); padding: 6px 10px; border-radius: 6px; }
+.panel.inset { background: var(--stone); border: 1px solid var(--line); box-shadow: none; }
+tr.selected > td { background: color-mix(in srgb, var(--action) 7%, transparent); }
