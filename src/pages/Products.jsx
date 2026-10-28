@@ -5,6 +5,13 @@ import { loadDicts, importProducts } from '../catalog.js'
 import DrainLoader from '../components/DrainLoader.jsx'
 
 const PAGE = 100
+// etykieta opisu z BL: opis dodatkowy 1–4 oraz opisy z innych kanałów i języków (np. description|de|allegro_123)
+const descLabel = k => {
+  const [f, lang, integ] = String(k).split('|')
+  const base = /^description_extra(\d)$/.test(f) ? `Opis dodatkowy ${f.slice(-1)}` : 'Opis'
+  const tail = [lang && lang.toUpperCase(), integ && integ.replace(/_\d+$/, '')].filter(Boolean).join(', ')
+  return tail ? `${base} – ${tail}` : base
+}
 const COLS = 'id, baselinker_product_id, sku, ean, name, bl_category_id, brand_id, bl_parent_id, is_bundle, features, images, import_flags, synced_at, source_hash, family_id, bundle_items'
 
 // Opis z BL to HTML – w podglądzie pokazujemy sam tekst (bez stylów i skryptów)
@@ -47,7 +54,7 @@ function Detail({ p, dicts }) {
       <div>
         <h3>Opis z Baselinkera (tekst)</h3>
         <div className="desc">{htmlToText(d.description_pl) || <span className="hint-inline">brak opisu</span>}</div>
-        {extras.map(([k, v]) => <Fragment key={k}><h3 style={{ marginTop: 14 }}>{k}</h3><div className="desc">{htmlToText(v)}</div></Fragment>)}
+        {extras.map(([k, v]) => <Fragment key={k}><h3 style={{ marginTop: 14 }}>{descLabel(k)}</h3><div className="desc">{htmlToText(v)}</div></Fragment>)}
       </div>
       <div>
         {(p.images || []).length > 0 && <><h3>Zdjęcia ({p.images.length})</h3><div className="thumbs">{p.images.map(im => <a key={im.url} href={im.url} target="_blank" rel="noreferrer"><img src={im.url} alt={`Zdjęcie ${im.position}`} loading="lazy" /></a>)}</div></>}
