@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase, plError, plN, fmtDate, fetchAll } from '../supabase.js'
 import { loadDicts, importProducts } from '../catalog.js'
 import DrainLoader from '../components/DrainLoader.jsx'
+import { createFamily, addToFamily, suggestName } from '../familyOps.js'
 
 const PAGE = 100
 // etykieta opisu z BL: opis dodatkowy 1–4 oraz opisy z innych kanałów i języków (np. description|de|allegro_123)
@@ -90,6 +91,33 @@ export default function Products({ profile }) {
   const [open, setOpen] = useState(null)
   const [famF, setFamF] = useState('all')
   const [sync, setSync] = useState(null)   // { busy, text, type }
+  const [sel, setSel] = useState(() => new Set())
+  const [fam, setFam] = useState(null)      // { mode: 'new' | 'add', name, leadId, target, busy, error }
+  const [famMsg, setFamMsg] = useState(null)
+  const canApprove = ['akceptujacy', 'admin'].includes(profile?.role)
+  const toggle = id => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+
+  // ręczne rodziny: z zaznaczonych produktów nowa rodzina albo dołożenie do istniejącej
+  async function saveFamily() {
+    const items = data.products.filter(p => sel.has(p.id))
+    setFam(f => ({ ...f, busy: true, error: null }))
+    try {
+      if (fam.mode === 'new') {
+        const r = await createFamily(items, { name: fam.name, leadId: fam.leadId, approve: canApprove, userId: profile?.id })
+        setFamMsg({ type: 'ok', text: `Utworzono rodzinę „${fam.name.trim() || items[0].name}” (${plN(items.length, 'produkt', 'produkty', 'produktów')})${canApprove ? ' – zatwierdzona, możesz wyciągnąć fakty' : ' jako propozycję – zatwierdza akceptujący'}.${r.removed ? ` Usunięto ${plN(r.removed, 'pustą rodzinę', 'puste rodziny', 'pustych rodzin')}.` : ''}`, family: r.id })
+      } else {
+        if (!fam.target) throw new Error('Wybierz rodzinę')
+        const r = await addToFamily(fam.target, items)
+        setFamMsg({ type: 'ok', text: `Dodano ${plN(r.added, 'produkt', 'produkty', 'produktów')} do rodziny „${data.families.get(fam.target)?.name}”. Wyciągnij ponownie fakty tej rodziny.${r.removed ? ` Usunięto ${plN(r.removed, 'pustą rodzinę', 'puste rodziny', 'pustych rodzin')}.` : ''}`, family: fam.target })
+      }
+      setFam(null); setSel(new Set()); load()
+    } catch (e) { setFam(f => ({ ...f, busy: false, error: plError(e.message) })) }
+  }
+  function openFamily(mode) {
+    const items = data.products.filter(p => sel.has(p.id))
+    setFamMsg(null)
+    setFam({ mode, name: suggestName(items, id => data.brands.get(id) || ''), leadId: items[0]?.id, target: '' })
+  }
 
   // Odświeżenie składników wszystkich zestawów z BL – gratisy rozpoznawane po słowie „gratis” w nazwie składnika
   async function refreshBundles() {
@@ -105,7 +133,7 @@ export default function Products({ profile }) {
 
   async function load() {
     try {
-      const [products, brands, dicts, fams] = await Promise.all([fetchAll('products', COLS, x => x.order('name')), fetchAll('brands', 'id, name'), loadDicts(), fetchAll('product_families', 'id, name, status')])
+      const [products, brands, dicts, fams] = await Promise.all([fetchAll('products', COLS, x => x.order('name')), fetchAll('brands', 'id, name'), loadDicts(), fetchAll('product_families', 'id, name, status, brand_id', x => x.order('name'))])
       setData({ products, brands: new Map(brands.map(b => [b.id, b.name])), dicts, families: new Map(fams.map(f => [f.id, f])) })
     } catch (e) { setError(plError(e.message)) }
   }
@@ -141,7 +169,7 @@ export default function Products({ profile }) {
   return (
     <section className="page">
       <h1>Produkty w aplikacji</h1>
-      <p className="muted lead">Produkty pobrane z Baselinkera. Produkty łączysz w rodziny (model z wariantami) na ekranie Rodziny produktów – tam też wyciągasz fakty i będziesz generować opisy.</p>
+      <p className="muted lead">Produkty pobrane z Baselinkera. Rodzinę (model z wariantami) utworzysz tutaj – zaznacz produkty i kliknij „Utwórz rodzinę z zaznaczonych” – albo automatycznie na ekranie Rodziny produktów („Zaproponuj rodziny”). Fakty i opisy powstają dla rodzin.</p>
       <div className="panel">
         <div className="filter-grid">
           <label>Szukaj (nazwa, SKU, EAN)<input value={q} onChange={e => setQ(e.target.value)} /></label>
@@ -161,13 +189,51 @@ export default function Products({ profile }) {
           </span>
         </div>
         {sync?.text && <p className={(sync.type || 'muted') + ' small'} role="status">{sync.text}</p>}
+        {famMsg && <p className={famMsg.type + ' small'} role="status">{famMsg.text} {famMsg.family && <Link className="link-dark" to={`/fakty?rodzina=${famMsg.family}`}>Przejdź do rodziny →</Link>}</p>}
+        {sel.size > 0 && (() => {
+          const items = data.products.filter(p => sel.has(p.id))
+          const inOther = items.filter(p => p.family_id && (fam?.mode !== 'add' || p.family_id !== fam?.target))
+          const brandsSel = new Set(items.map(p => p.brand_id || ''))
+          return (
+            <div className="panel inset" style={{ margin: '10px 0' }}>
+              <div className="row-form" style={{ gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <strong>Zaznaczono {plN(items.length, 'produkt', 'produkty', 'produktów')}</strong>
+                <button className="btn" onClick={() => openFamily('new')}>Utwórz rodzinę z zaznaczonych</button>
+                {data.families.size > 0 && <button className="btn ghost" onClick={() => openFamily('add')}>Dodaj do istniejącej rodziny</button>}
+                <button className="link-dark" onClick={() => { setSel(new Set()); setFam(null) }}>Odznacz</button>
+              </div>
+              {fam && (
+                <div style={{ marginTop: 12 }}>
+                  {fam.mode === 'new' ? (
+                    <div className="filter-grid">
+                      <label>Nazwa rodziny (model)<input value={fam.name} onChange={e => setFam({ ...fam, name: e.target.value })} /></label>
+                      <label>Wariant wiodący (z niego powstaje opis bazowy)<select value={fam.leadId} onChange={e => setFam({ ...fam, leadId: e.target.value })}>{items.map(p => <option key={p.id} value={p.id}>{p.sku} – {p.name}</option>)}</select></label>
+                    </div>
+                  ) : (
+                    <div className="filter-grid">
+                      <label>Rodzina<select value={fam.target} onChange={e => setFam({ ...fam, target: e.target.value })}><option value="">wybierz…</option>{[...data.families.values()].map(f => <option key={f.id} value={f.id}>{f.name}{f.brand_id ? ` (${data.brands.get(f.brand_id) || '?'})` : ''}</option>)}</select></label>
+                    </div>
+                  )}
+                  {inOther.length > 0 && <p className="warn small">{plN(inOther.length, 'zaznaczony produkt jest', 'zaznaczone produkty są', 'zaznaczonych produktów jest')} już w innej rodzinie ({[...new Set(inOther.map(p => data.families.get(p.family_id)?.name || '?'))].join(', ')}) – zostaną przeniesione; rodzina, w której nie zostanie żaden produkt, zostanie usunięta.</p>}
+                  {brandsSel.size > 1 && <p className="warn small">Zaznaczone produkty mają różne marki – rodzina powinna obejmować jeden model jednej marki.</p>}
+                  {fam.error && <p className="error small">{fam.error}</p>}
+                  <span className="row-form" style={{ gap: 10, marginTop: 8 }}>
+                    <button className="btn" disabled={fam.busy || (fam.mode === 'add' && !fam.target)} onClick={saveFamily}>{fam.busy ? 'Zapisywanie…' : fam.mode === 'new' ? 'Utwórz rodzinę' : 'Dodaj do rodziny'}</button>
+                    <button className="link-dark" onClick={() => setFam(null)}>Anuluj</button>
+                  </span>
+                </div>
+              )}
+            </div>
+          )
+        })()}
         <div className="table-wrap">
           <table className="compact">
-            <thead><tr><th>SKU</th><th>Nazwa</th><th>Marka</th><th>Kategoria</th><th className="num">Parametry</th><th className="num">Zdjęcia</th><th>Rodzina</th><th>Uwagi do danych</th></tr></thead>
+            <thead><tr><th className="check"><input type="checkbox" aria-label="Zaznacz produkty na stronie" checked={pageRows.length > 0 && pageRows.every(p => sel.has(p.id))} onChange={e => setSel(s => { const n = new Set(s); pageRows.forEach(p => e.target.checked ? n.add(p.id) : n.delete(p.id)); return n })} /></th><th>SKU</th><th>Nazwa</th><th>Marka</th><th>Kategoria</th><th className="num">Parametry</th><th className="num">Zdjęcia</th><th>Rodzina</th><th>Uwagi do danych</th></tr></thead>
             <tbody>
               {pageRows.map(p => (
                 <Fragment key={p.id}>
-                  <tr>
+                  <tr className={sel.has(p.id) ? 'selected' : ''}>
+                    <td className="check"><input type="checkbox" checked={sel.has(p.id)} onChange={() => toggle(p.id)} aria-label={`Zaznacz ${p.sku}`} /></td>
                     <td className="mono">{p.sku}</td>
                     <td className="name"><button className="row-toggle" aria-expanded={open === p.id} onClick={() => setOpen(open === p.id ? null : p.id)}>{p.name}</button>{p.is_bundle && <span className="tag info gap">zestaw</span>}{p.is_bundle && (p.bundle_items || []).filter(b => b.gift).map(b => <span key={b.bl_id} className="tag okt gap" title={b.gift_source ? `rozpoznano: ${b.gift_source}` : ''}>gratis: {b.name || b.sku}</span>)}{p.bl_parent_id && <span className="tag gap">wariant</span>}</td>
                     <td>{data.brands.get(p.brand_id) || '—'}</td>
@@ -177,7 +243,7 @@ export default function Products({ profile }) {
                     <td>{p.family_id ? <Link to={`/fakty?rodzina=${p.family_id}`} className="link-dark">{data.families.get(p.family_id)?.name || 'rodzina'}</Link> : <span className="muted small">bez rodziny</span>}</td>
                     <td className="flags">{(p.import_flags || []).join(' · ')}</td>
                   </tr>
-                  {open === p.id && <tr className="detail-row"><td colSpan={8}><Detail p={p} dicts={data.dicts} /></td></tr>}
+                  {open === p.id && <tr className="detail-row"><td colSpan={9}><Detail p={p} dicts={data.dicts} /></td></tr>}
                 </Fragment>
               ))}
             </tbody>

@@ -266,6 +266,7 @@ export default function Families({ profile }) {
             <span className="stat">Zatwierdzonych: <strong>{data.families.filter(f => f.status === 'zatwierdzone').length.toLocaleString('pl-PL')}</strong></span>
             <span className="stat">Produkty bez rodziny: <strong>{data.unassigned.toLocaleString('pl-PL')}</strong></span>
             {data.unassigned > 0 && <button className="btn" onClick={() => { setProposing(true); setMsg('') }}>Zaproponuj rodziny</button>}
+            <Link className="btn ghost" to="/produkty" title="Zaznacz produkty na liście i kliknij „Utwórz rodzinę z zaznaczonych” albo „Dodaj do istniejącej rodziny”">Utwórz rodzinę ręcznie</Link>
           </div>
         </div>
       )}
