@@ -4,6 +4,7 @@ import { supabase, plError, fetchAll } from '../supabase.js'
 import { regenerateSections, generateVariants } from '../gen.js'
 import DrainLoader from '../components/DrainLoader.jsx'
 import ImageSlots from '../components/ImageSlots.jsx'
+import { renderDescription, templateFields } from '../render.js'
 
 const STATUS = { generowanie: 'w trakcie', do_weryfikacji: 'do weryfikacji', poprawki: 'poprawiony', zaakceptowany: 'zaakceptowany', opublikowany: 'opublikowany', blad: 'błąd', do_generacji: 'do generacji' }
 const STUCK_MIN = 20
@@ -97,6 +98,37 @@ function sectionBlocks(template) {
   return out
 }
 
+// nazwa pola w trybie edycji
+function fieldLabel(k) {
+  let m
+  if (k === 'TITLE') return 'Tytuł'
+  if (k === 'HERO_H1') return 'Nagłówek H1'
+  if (k === 'HERO_LEAD') return 'Lead'
+  if (/_IMG_ALT$/.test(k)) return 'Opis obrazka (ALT)'
+  if (/_H2$/.test(k)) return 'Nagłówek sekcji'
+  if (/_P_BOLD$/.test(k)) return 'Pogrubione zdanie'
+  if (/_AKCENT$/.test(k)) return 'Wyróżnik'
+  if (/_P$/.test(k)) return k === 'CLOSING_P' ? 'Podsumowanie' : 'Akapit'
+  if ((m = k.match(/_LI(\d)$/))) return `Punkt ${m[1]}`
+  if ((m = k.match(/^FEAT(\d)$/))) return `Atut ${m[1]}`
+  if ((m = k.match(/^SPEC(\d+)$/))) return `Parametr ${m[1]} („Nazwa: wartość”)`
+  if ((m = k.match(/^FAQ_Q(\d)$/))) return `Pytanie ${m[1]}`
+  if ((m = k.match(/^FAQ_A(\d)$/))) return `Odpowiedź ${m[1]}`
+  return k
+}
+const LONG_FIELD = k => /_P$|_P_BOLD$|HERO_LEAD|FAQ_A|CLOSING_P|WHY_LI/.test(k)
+// po ręcznej edycji: błędy kontroli, które da się sprawdzić od razu (limity znaków, liczby spoza faktów), są przeliczane
+function recheckErrors(errors, fields) {
+  const all = Object.values(fields).join(' ')
+  const nums = new Set((all.match(/\d+(?:[.,]\d+)?/g) || []).map(n => n.replace(',', '.').replace(/^0+(?=\d)/, '').replace(/\.0+$/, '')))
+  return (errors || []).flatMap(e => {
+    let m
+    if ((m = e.match(/^([A-Z0-9_]+): (\d+) zn\. > limit (\d+)$/))) { const len = String(fields[m[1]] || '').trim().length; return len > Number(m[3]) ? [`${m[1]}: ${len} zn. > limit ${m[3]}`] : [] }
+    if ((m = e.match(/^(Liczby spoza faktów[^:]*): (.+)$/))) { const left = m[2].split(/,\s*/).filter(n => nums.has(n)); return left.length ? [`${m[1]}: ${left.join(', ')}`] : [] }
+    return [e]
+  })
+}
+
 function Fields({ keys, data }) {
   const v = k => String(data?.[k] ?? '').trim()
   const items = keys.filter(v)
@@ -128,6 +160,7 @@ function ReviewDetail({ id, profile }) {
   const [err, setErr] = useState('')
   const [view, setView] = useState('sekcje')
   const [kids, setKids] = useState([])
+  const [edit, setEdit] = useState(null)   // ręczna edycja: { fields, pl }
   const lk = useLookups()
   const timer = useRef(null)
   const canApprove = ['akceptujacy', 'admin'].includes(profile?.role)
@@ -149,7 +182,32 @@ function ReviewDetail({ id, profile }) {
     clearTimeout(timer.current)
     if (pending) timer.current = setTimeout(load, 5000)
   }
-  useEffect(() => { setSel({}); setComments({}); setAsRule({}); setGeneral(''); setErr(''); load(); return () => clearTimeout(timer.current) }, [id])
+  useEffect(() => { setSel({}); setComments({}); setAsRule({}); setGeneral(''); setErr(''); setEdit(null); load(); return () => clearTimeout(timer.current) }, [id])
+
+  async function saveEdit() {
+    const fields = Object.fromEntries(Object.entries({ ...(d.fields || {}), ...edit.fields }).map(([k, v]) => [k, String(v ?? '').trim()]))
+    const pl = Object.fromEntries(Object.entries(edit.pl).map(([k, v]) => [k, String(v ?? '').trim()]).filter(([, v]) => v))
+    const changed = Object.keys(fields).filter(k => fields[k] !== String(d.fields?.[k] ?? '').trim())
+    const plChanged = Object.keys({ ...pl, ...(d.translation_pl || {}) }).filter(k => (pl[k] || '') !== String(d.translation_pl?.[k] ?? '').trim())
+    if (!changed.length && !plChanged.length) { setEdit(null); return }
+    setBusy('edit'); setErr('')
+    const html = renderDescription(fields, tpl, d.meta?.images || {})
+    // tłumaczenie kontrolne pól zmienionych tylko w oryginale – oznaczone jako nieaktualne
+    const stale = [...new Set([...(d.meta?.pl_stale || []), ...changed.filter(k => !plChanged.includes(k) && fields[k])])].filter(k => !plChanged.includes(k))
+    const errors = recheckErrors(d.qa?.errors, fields)
+    const entry = { by: profile?.id || null, by_name: profile?.full_name || profile?.email || '', at: new Date().toISOString(), fields: changed, pl_fields: plChanged, before: Object.fromEntries(changed.map(k => [k, d.fields?.[k] ?? ''])) }
+    const patch = { fields, html, translation_pl: pl, meta: { ...(d.meta || {}), pl_stale: stale, manual_edits: [...(d.meta?.manual_edits || []), entry].slice(-20) },
+      qa: { ...(d.qa || {}), errors, pass: errors.length === 0, manual_edit: entry }, ...(d.status === 'blad' ? { status: 'do_weryfikacji' } : {}) }
+    const { error } = await supabase.from('descriptions').update(patch).eq('id', d.id)
+    setBusy('')
+    if (error) { setErr(plError(error.message)); return }
+    setEdit(null); load()
+  }
+  function startEdit() {
+    const keys = ['TITLE', ...templateFields(tpl)]
+    setEdit({ fields: Object.fromEntries(keys.map(k => [k, d.fields?.[k] ?? ''])), pl: Object.fromEntries(keys.map(k => [k, d.translation_pl?.[k] ?? ''])) })
+    setView('sekcje'); setSel({})
+  }
 
   async function accept() {
     const errs = d.qa?.errors || []
@@ -199,7 +257,7 @@ function ReviewDetail({ id, profile }) {
   const qa = d.qa || {}
   const blocks = sectionBlocks(tpl)
   const chosen = Object.keys(sel).filter(k => sel[k])
-  const editable = ['do_weryfikacji', 'blad'].includes(d.status)
+  const editable = ['do_weryfikacji', 'blad', 'poprawki'].includes(d.status)
 
   return (
     <section className="page wide">
@@ -235,6 +293,7 @@ function ReviewDetail({ id, profile }) {
             <div className="panel qa">
               {qa.errors?.length > 0 && <><h2>{qa.override ? 'Błędy kontroli (zaakceptowane mimo nich)' : 'Błędy do poprawy'}</h2><ul className="qa-err">{qa.errors.map((x, i) => <li key={i}>{x}</li>)}</ul></>}
               {qa.override && <p className="warn small">Zaakceptowano mimo błędów{qa.override.by_name ? `: ${qa.override.by_name}` : ''}, {new Date(qa.override.at).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })}{qa.override.note ? ` – „${qa.override.note}”` : ''}.</p>}
+              {qa.manual_edit && <p className="muted small">Opis edytowano ręcznie ({qa.manual_edit.by_name || '—'}, {new Date(qa.manual_edit.at).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })}). Limity znaków i liczby przeliczono ponownie; pozostałe uwagi dotyczą treści sprzed edycji – sprawdź je przed akceptacją.</p>}
               {qa.warnings?.length > 0 && <details open={!qa.errors?.length}><summary>Uwagi ({qa.warnings.length})</summary><ul className="qa-warn">{qa.warnings.map((x, i) => <li key={i}>{x}</li>)}</ul></details>}
             </div>
           )}
@@ -247,7 +306,9 @@ function ReviewDetail({ id, profile }) {
             <div className="review-actions">
               {(canApprove || !['zaakceptowany', 'opublikowany'].includes(d.status)) && <button className="btn ghost danger" disabled={!!busy} onClick={removeVersion}>Usuń wersję</button>}
               {d.html && <button className="btn ghost" onClick={() => navigator.clipboard.writeText(d.html)}>Kopiuj HTML</button>}
-              {canApprove && d.status === 'do_weryfikacji' && (
+              {editable && tpl && !edit && <button className="btn ghost" disabled={!!busy} onClick={startEdit}>Edytuj ręcznie</button>}
+              {edit && <><button className="btn ghost" disabled={!!busy} onClick={() => setEdit(null)}>Anuluj edycję</button><button className="btn" disabled={!!busy} onClick={saveEdit}>{busy === 'edit' ? 'Zapisywanie…' : 'Zapisz zmiany'}</button></>}
+              {canApprove && d.status === 'do_weryfikacji' && !edit && (
                 <button className={qa.errors?.length ? 'btn warn' : 'btn'} onClick={accept} disabled={!!busy} title={qa.errors?.length ? 'Opis ma błędy kontroli – możesz go zaakceptować po świadomym potwierdzeniu' : ''}>{busy === 'accept' ? 'Zapisywanie…' : qa.errors?.length ? 'Akceptuj mimo błędów' : 'Akceptuj opis'}</button>
               )}
             </div>
@@ -281,18 +342,31 @@ function ReviewDetail({ id, profile }) {
           ) : view === 'podglad' ? <div className="preview-frame" dangerouslySetInnerHTML={{ __html: d.html || '' }} /> : (
             <>
               <div className="review-grid head"><div /><div>Oryginał</div><div>Tłumaczenie kontrolne (PL)</div><div>Uwagi</div></div>
-              {blocks.map(b => (
+              {edit ? blocks.map((b, bi) => {
+                const keys = b.keys.filter(k => k in edit.fields)
+                if (!keys.length) return null
+                return (
+                  <div key={b.key} className="review-grid editing">
+                    <div><strong>{b.label}</strong></div>
+                    <div>{keys.map(k => <label key={k} className="edit-field">{fieldLabel(k)} <span className="muted small">{String(edit.fields[k] || '').length} zn.</span>
+                      <textarea rows={LONG_FIELD(k) ? 4 : 2} value={edit.fields[k]} onChange={e => setEdit({ ...edit, fields: { ...edit.fields, [k]: e.target.value } })} /></label>)}</div>
+                    <div className="pl">{keys.map(k => <label key={k} className="edit-field">{fieldLabel(k)} (PL)
+                      <textarea rows={LONG_FIELD(k) ? 4 : 2} value={edit.pl[k]} onChange={e => setEdit({ ...edit, pl: { ...edit.pl, [k]: e.target.value } })} /></label>)}</div>
+                    <div className="muted small">{bi === 0 && 'Puste pole = element nie pojawi się w opisie. Tłumaczenie PL służy tylko do kontroli – jeśli go nie poprawisz, zostanie oznaczone jako nieaktualne. Po zapisie podgląd HTML odświeży się automatycznie.'}</div>
+                  </div>
+                )
+              }) : blocks.map(b => (
                 <div key={b.key} className={'review-grid' + (sel[b.key] ? ' picked' : '')}>
                   <div><label className="check">{editable && <input type="checkbox" checked={!!sel[b.key]} onChange={e => setSel({ ...sel, [b.key]: e.target.checked })} />}<strong>{b.label}</strong></label></div>
                   <div><Fields keys={b.keys} data={d.fields} /></div>
-                  <div className="pl"><Fields keys={b.keys} data={d.translation_pl} /></div>
+                  <div className="pl">{b.keys.some(k => (d.meta?.pl_stale || []).includes(k)) && <p className="warn small" style={{ margin: '0 0 6px' }}>Tłumaczenie nieaktualne – oryginał edytowano ręcznie</p>}<Fields keys={b.keys} data={d.translation_pl} /></div>
                   <div>{editable && <>
                     <textarea rows={3} placeholder="Co poprawić?" value={comments[b.key] || ''} onChange={e => { setComments({ ...comments, [b.key]: e.target.value }); if (e.target.value && !sel[b.key]) setSel({ ...sel, [b.key]: true }) }} />
                     {(comments[b.key] || '').trim() && <label className="check small rule-check"><input type="checkbox" checked={!!asRule[b.key]} onChange={e => setAsRule({ ...asRule, [b.key]: e.target.checked })} /> zaproponuj jako stałą zasadę</label>}
                   </>}</div>
                 </div>
               ))}
-              {editable && (
+              {editable && !edit && (
                 <div className="panel regen">
                   <label>Uwaga ogólna do poprawianych sekcji (opcjonalnie)<textarea rows={2} value={general} onChange={e => setGeneral(e.target.value)} /></label>
                   <button className="btn" onClick={regenerate} disabled={!chosen.length || !!busy}>{busy === 'regen' ? 'Wysyłanie…' : `Popraw zaznaczone sekcje (${chosen.length})`}</button>
