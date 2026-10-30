@@ -622,3 +622,5 @@ a .dnode.sku:hover rect:first-child { stroke: var(--action); }
 p.warn { color: var(--warn); background: var(--warn-bg); padding: 6px 10px; border-radius: 6px; }
 .panel.inset { background: var(--stone); border: 1px solid var(--line); box-shadow: none; }
 tr.selected > td { background: color-mix(in srgb, var(--action) 7%, transparent); }
+.btn.warn { background: var(--warn); border-color: var(--warn); color: #fff; }
+.btn.warn:hover { background: #7d500d; }
