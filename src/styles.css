@@ -624,3 +624,7 @@ p.warn { color: var(--warn); background: var(--warn-bg); padding: 6px 10px; bord
 tr.selected > td { background: color-mix(in srgb, var(--action) 7%, transparent); }
 .btn.warn { background: var(--warn); border-color: var(--warn); color: #fff; }
 .btn.warn:hover { background: #7d500d; }
+/* ręczna edycja opisu */
+.review-grid.editing { border-color: var(--action); }
+.review-grid .edit-field { display: block; font-size: 12.5px; color: var(--ink-soft); margin-bottom: 8px; }
+.review-grid .edit-field textarea { margin-top: 3px; color: var(--ink); resize: vertical; }
