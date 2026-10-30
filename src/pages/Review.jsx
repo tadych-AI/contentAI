@@ -209,9 +209,26 @@ function ReviewDetail({ id, profile }) {
     setView('sekcje'); setSel({})
   }
 
+  // cofnięcie akceptacji: opis wraca do weryfikacji (historia akceptacji zostaje w meta); dla opisu bazowego – opcjonalnie także warianty
+  async function unaccept() {
+    const accKids = d.is_base ? kids.filter(x => x.status === 'zaakceptowany') : []
+    if (!window.confirm(`Cofnąć akceptację tego opisu (v${d.version})?\n\nOpis wróci do statusu „do weryfikacji” – nie trafi do eksportu eMAG, dopóki nie zaakceptujesz go ponownie. Możesz go wtedy edytować lub poprawić sekcje.${d.is_base ? '\nDopóki opis bazowy nie jest zaakceptowany, nie wygenerujesz z niego nowych wariantów.' : ''}`)) return
+    const withKids = accKids.length > 0 && window.confirm(`${accKids.length === 1 ? '1 opis wariantu jest zaakceptowany' : `${accKids.length} opisy wariantów są zaakceptowane`} (powstały z tego opisu bazowego).\n\nOK – cofnij akceptację także wariantów.\nAnuluj – warianty zostają zaakceptowane.`)
+    const entry = { action: 'cofnieto', by: profile?.id || null, by_name: profile?.full_name || profile?.email || '', at: new Date().toISOString() }
+    const qaOf = q => { const { override, ...rest } = q || {}; return override ? { ...rest, override_revoked: override } : rest }
+    setBusy('unaccept'); setErr('')
+    let { error } = await supabase.from('descriptions').update({ status: 'do_weryfikacji', approved_by: null, approved_at: null, qa: qaOf(d.qa), meta: { ...(d.meta || {}), approval_history: [...(d.meta?.approval_history || []), entry].slice(-20) } }).eq('id', d.id)
+    if (!error && withKids) {
+      const r = await supabase.from('descriptions').update({ status: 'do_weryfikacji', approved_by: null, approved_at: null }).in('id', accKids.map(x => x.id))
+      error = r.error
+    }
+    setBusy('')
+    if (error) setErr(plError(error.message)); else load()
+  }
+
   async function accept() {
     const errs = d.qa?.errors || []
-    let patch = { status: 'zaakceptowany' }
+    let patch = { status: 'zaakceptowany', approved_by: profile?.id || null, approved_at: new Date().toISOString(), meta: { ...(d.meta || {}), approval_history: [...(d.meta?.approval_history || []), { action: 'zaakceptowano', by: profile?.id || null, by_name: profile?.full_name || profile?.email || '', at: new Date().toISOString() }].slice(-20) } }
     if (errs.length) {
       // akceptacja mimo błędów kontroli – świadoma decyzja redaktora, zapisana w QA (kto, kiedy, które błędy)
       const ok = window.confirm(`Ten opis ma ${errs.length === 1 ? '1 błąd' : `${errs.length} błędy`} kontroli:\n\n${errs.slice(0, 8).map(e => '• ' + e).join('\n')}${errs.length > 8 ? `\n… i ${errs.length - 8} więcej` : ''}\n\nCzy na pewno zaakceptować opis mimo tych błędów? Sprawdź wcześniej treść – np. liczby spoza faktów mogą być poprawne, jeśli wynikają z parametrów lub danych zestawu.`)
@@ -308,12 +325,14 @@ function ReviewDetail({ id, profile }) {
               {d.html && <button className="btn ghost" onClick={() => navigator.clipboard.writeText(d.html)}>Kopiuj HTML</button>}
               {editable && tpl && !edit && <button className="btn ghost" disabled={!!busy} onClick={startEdit}>Edytuj ręcznie</button>}
               {edit && <><button className="btn ghost" disabled={!!busy} onClick={() => setEdit(null)}>Anuluj edycję</button><button className="btn" disabled={!!busy} onClick={saveEdit}>{busy === 'edit' ? 'Zapisywanie…' : 'Zapisz zmiany'}</button></>}
+              {canApprove && d.status === 'zaakceptowany' && <button className="btn ghost" disabled={!!busy} onClick={unaccept}>{busy === 'unaccept' ? 'Zapisywanie…' : 'Cofnij akceptację'}</button>}
               {canApprove && d.status === 'do_weryfikacji' && !edit && (
                 <button className={qa.errors?.length ? 'btn warn' : 'btn'} onClick={accept} disabled={!!busy} title={qa.errors?.length ? 'Opis ma błędy kontroli – możesz go zaakceptować po świadomym potwierdzeniu' : ''}>{busy === 'accept' ? 'Zapisywanie…' : qa.errors?.length ? 'Akceptuj mimo błędów' : 'Akceptuj opis'}</button>
               )}
             </div>
           </div>
           {err && <p className="error" role="alert">{err}</p>}
+          {(() => { const h = (d.meta?.approval_history || []).at(-1); return h?.action === 'cofnieto' && d.status !== 'zaakceptowany' ? <p className="muted small">Akceptację cofnięto: {h.by_name || '—'}, {new Date(h.at).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })}.</p> : null })()}
 
           {d.is_base && d.status === 'zaakceptowany' && (
             <div className="panel variants">

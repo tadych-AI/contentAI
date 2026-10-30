@@ -312,7 +312,7 @@ export default function Families({ profile }) {
                             </select>
                           ) : <span className="mono small">{m[0]?.sku || '—'}</span>}
                         </td>
-                        <td>{f.status === 'zatwierdzone' ? <span className="tag okt">zatwierdzona</span> : <>
+                        <td>{f.status === 'zatwierdzone' ? <><span className="tag okt">zatwierdzona</span>{canApprove && <button className="link-dark gap" onClick={() => { if (window.confirm(`Cofnąć zatwierdzenie rodziny „${f.name}”? Rodzina wróci do propozycji – do ponownego zatwierdzenia nie wyciągniesz dla niej faktów ani nie wygenerujesz opisów. Istniejące fakty i opisy zostają.`)) patch(f.id, { status: 'propozycja' }) }}>Cofnij zatwierdzenie</button>}</> : <>
                           <span className="tag">{STATUS[f.status]}</span>{canApprove && <button className="link-dark gap" onClick={() => patch(f.id, { status: 'zatwierdzone' })}>Zatwierdź</button>}</>}</td>
                         <td>{st.key === 'brak' ? <span className="muted small">{st.label}</span> : <Link to={`/fakty?rodzina=${f.id}`} className={`tag ${st.key === 'gotowe' ? 'okt' : st.key === 'nieaktualne' ? 'warn' : 'info'}`}>{st.label}</Link>}</td>
                         <td>{(() => { const b = data.bases.get(f.id); if (!b) return <span className="muted small">—</span>
