@@ -72,7 +72,7 @@ function ReviewList({ profile }) {
                 <td className="check"><input type="checkbox" aria-label={`Zaznacz ${lk.sku[r.product_id]}`} checked={sel.has(r.id)} onChange={() => setSel(x => { const n = new Set(x); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n })} /></td>
                 <td><strong>{lk.fam[r.family_id] || 'bez rodziny'}</strong>{r.is_base && <span className="tag">bazowy</span>}</td><td className="mono">{lk.sku[r.product_id]}</td><td>{lk.ch[r.channel_id]}</td><td>v{r.version}{r.versions.length > 1 ? <span className="muted small"> ({r.versions.length} wersje)</span> : ''}</td>
                 <td><span className={`tag st-${r.status}`}>{STATUS[r.status]}</span>{r.status === 'generowanie' && Date.now() - new Date(r.created_at).getTime() > STUCK_MIN * 60000 && <span className="hint-inline small"> – ponad {STUCK_MIN} min, prawdopodobnie przerwane</span>}</td>
-                <td>{r.qa ? <>{r.qa.errors?.length ? <span className="tag err">{r.qa.errors.length} błędy</span> : <span className="tag okt">OK</span>} {r.qa.warnings?.length ? <span className="muted small">{r.qa.warnings.length} uwag</span> : null}</> : '—'}</td>
+                <td>{r.qa ? <>{r.qa.errors?.length ? (r.qa.override ? <span className="tag warn" title={`Zaakceptowano mimo błędów: ${r.qa.override.by_name || ''}${r.qa.override.note ? ' – ' + r.qa.override.note : ''}`}>{r.qa.errors.length} błędy – zaakceptowano mimo</span> : <span className="tag err">{r.qa.errors.length} błędy</span>) : <span className="tag okt">OK</span>} {r.qa.warnings?.length ? <span className="muted small">{r.qa.warnings.length} uwag</span> : null}</> : '—'}</td>
                 <td className="muted">{new Date(r.created_at).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })}</td>
                 <td><Link to={`/opisy/${r.id}`}>Otwórz</Link></td>
               </tr>))}</tbody>
@@ -152,8 +152,18 @@ function ReviewDetail({ id, profile }) {
   useEffect(() => { setSel({}); setComments({}); setAsRule({}); setGeneral(''); setErr(''); load(); return () => clearTimeout(timer.current) }, [id])
 
   async function accept() {
+    const errs = d.qa?.errors || []
+    let patch = { status: 'zaakceptowany' }
+    if (errs.length) {
+      // akceptacja mimo błędów kontroli – świadoma decyzja redaktora, zapisana w QA (kto, kiedy, które błędy)
+      const ok = window.confirm(`Ten opis ma ${errs.length === 1 ? '1 błąd' : `${errs.length} błędy`} kontroli:\n\n${errs.slice(0, 8).map(e => '• ' + e).join('\n')}${errs.length > 8 ? `\n… i ${errs.length - 8} więcej` : ''}\n\nCzy na pewno zaakceptować opis mimo tych błędów? Sprawdź wcześniej treść – np. liczby spoza faktów mogą być poprawne, jeśli wynikają z parametrów lub danych zestawu.`)
+      if (!ok) return
+      const note = window.prompt('Krótko: dlaczego akceptujesz mimo błędów? (opcjonalnie – zapisze się w historii opisu)', '') 
+      if (note === null) return
+      patch.qa = { ...(d.qa || {}), override: { by: profile?.id || null, by_name: profile?.full_name || profile?.email || '', at: new Date().toISOString(), errors: errs, note: note.trim() || null } }
+    }
     setBusy('accept'); setErr('')
-    const { error } = await supabase.from('descriptions').update({ status: 'zaakceptowany' }).eq('id', d.id)
+    const { error } = await supabase.from('descriptions').update(patch).eq('id', d.id)
     if (error) setErr(plError(error.message)); else load()
     setBusy('')
   }
@@ -223,7 +233,8 @@ function ReviewDetail({ id, profile }) {
           )}
           {(qa.errors?.length > 0 || qa.warnings?.length > 0) && (
             <div className="panel qa">
-              {qa.errors?.length > 0 && <><h2>Błędy do poprawy</h2><ul className="qa-err">{qa.errors.map((x, i) => <li key={i}>{x}</li>)}</ul></>}
+              {qa.errors?.length > 0 && <><h2>{qa.override ? 'Błędy kontroli (zaakceptowane mimo nich)' : 'Błędy do poprawy'}</h2><ul className="qa-err">{qa.errors.map((x, i) => <li key={i}>{x}</li>)}</ul></>}
+              {qa.override && <p className="warn small">Zaakceptowano mimo błędów{qa.override.by_name ? `: ${qa.override.by_name}` : ''}, {new Date(qa.override.at).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })}{qa.override.note ? ` – „${qa.override.note}”` : ''}.</p>}
               {qa.warnings?.length > 0 && <details open={!qa.errors?.length}><summary>Uwagi ({qa.warnings.length})</summary><ul className="qa-warn">{qa.warnings.map((x, i) => <li key={i}>{x}</li>)}</ul></details>}
             </div>
           )}
@@ -237,7 +248,7 @@ function ReviewDetail({ id, profile }) {
               {(canApprove || !['zaakceptowany', 'opublikowany'].includes(d.status)) && <button className="btn ghost danger" disabled={!!busy} onClick={removeVersion}>Usuń wersję</button>}
               {d.html && <button className="btn ghost" onClick={() => navigator.clipboard.writeText(d.html)}>Kopiuj HTML</button>}
               {canApprove && d.status === 'do_weryfikacji' && (
-                <button className="btn" onClick={accept} disabled={!!busy || qa.errors?.length > 0} title={qa.errors?.length ? 'Najpierw popraw błędy QA' : ''}>{busy === 'accept' ? 'Zapisywanie…' : 'Akceptuj opis'}</button>
+                <button className={qa.errors?.length ? 'btn warn' : 'btn'} onClick={accept} disabled={!!busy} title={qa.errors?.length ? 'Opis ma błędy kontroli – możesz go zaakceptować po świadomym potwierdzeniu' : ''}>{busy === 'accept' ? 'Zapisywanie…' : qa.errors?.length ? 'Akceptuj mimo błędów' : 'Akceptuj opis'}</button>
               )}
             </div>
           </div>
