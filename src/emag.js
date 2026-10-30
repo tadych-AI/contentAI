@@ -124,9 +124,18 @@ export function characteristicIssues(chars, values) {
   return { missing, invalid }
 }
 
+// GPSR: producent i osoba odpowiedzialna w UE (kolumny manufacturer_* i responsible_* szablonu „create”); nadpisywane w kanale (limits.gpsr)
+export const GPSR_DEFAULT = {
+  manufacturer_name: 'P. H. U. ARKADIUSZ, URSZULA TADYCH S.C.', manufacturer_address: 'ul. Kościuszki 32, 62-020 Swarzędz, Polska', manufacturer_email: 'sklep@pomyslowalazienka.pl',
+  responsible_name: 'P. H. U. ARKADIUSZ, URSZULA TADYCH S.C.', responsible_address: 'ul. Kościuszki 32, 62-020 Swarzędz, Polska', responsible_email: 'sklep@pomyslowalazienka.pl',
+}
+export const GPSR_FIELDS = [['manufacturer_name', 'Producent – nazwa'], ['manufacturer_address', 'Producent – adres'], ['manufacturer_email', 'Producent – e-mail'],
+  ['responsible_name', 'Odpowiedzialny w UE – nazwa'], ['responsible_address', 'Odpowiedzialny w UE – adres'], ['responsible_email', 'Odpowiedzialny w UE – e-mail']]
+export const gpsrOf = channel => ({ ...GPSR_DEFAULT, ...Object.fromEntries(Object.entries(channel?.limits?.gpsr || {}).filter(([, v]) => String(v || '').trim())) })
+
 // Wiersz pliku importu dla produktu. ctx: { product, description, title, brand, values, family, template, defaults }
 // title = zatwierdzony tytuł z modułu tytułów (gdy brak – tytuł z opisu)
-export function buildRow(fileType, { product, description, title, brand, values, family, template, defaults = {} }) {
+export function buildRow(fileType, { product, description, title, brand, values, family, template, defaults = {}, gpsr = null }) {
   const imgs = [...(product.images || [])].sort((a, b) => a.position - b.position).map(i => i.url)
   const lang = (template.languages || []).find(l => /hu_HU/i.test(l)) || (template.languages || [])[0] || 'Magyar (hu_HU)'
   const w = warrantyMonths(product)
@@ -135,6 +144,7 @@ export function buildRow(fileType, { product, description, title, brand, values,
     name: title || description?.fields?.TITLE || '', brand: brand || '', description: description?.html || '', source_language: lang,
     main_image_url: imgs[0] || '', other_image_url1: imgs[1] || '', other_image_url2: imgs[2] || '', other_image_url3: imgs[3] || '', other_image_url4: imgs[4] || '', other_image_url5: imgs[5] || '',
   }
+  if (gpsr && fileType !== 'family') for (const [k] of GPSR_FIELDS) if (gpsr[k]) row[k] = gpsr[k]
   if (family && family.size > 1 && family.type) Object.assign(row, { family_id: family.id, family_name: family.name, family_type: family.type })
   for (const c of template.characteristics || []) { const v = values?.[c.key]?.value; if (v) row[c.key] = c.restrictive ? (matchAllowed(v, c.values) || v) : v }
   if (fileType === 'create') {
