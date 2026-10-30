@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase, plError, plN, fmtDate, fetchAll } from '../supabase.js'
 import { runJob } from '../jobs.js'
 import { parseTemplate, fillTemplate, FILE_TYPE_LABEL } from '../emagXlsx.js'
-import { presetCharacteristics, chooseFamilyType, characteristicIssues, buildRow, rowProblems, NUMERIC_COLUMNS, matchAllowed, planEmagFamilies, registryChanges, SPLIT_LABEL } from '../emag.js'
+import { presetCharacteristics, chooseFamilyType, characteristicIssues, buildRow, rowProblems, NUMERIC_COLUMNS, matchAllowed, planEmagFamilies, registryChanges, SPLIT_LABEL, GPSR_FIELDS, gpsrOf } from '../emag.js'
 import { factsFor } from '../gen.js'
 import { importProducts } from '../catalog.js'
 import DrainLoader from '../components/DrainLoader.jsx'
@@ -219,6 +219,30 @@ function FamilyRegistry({ registry, families, skuOf, onChanged }) {
   )
 }
 
+// Dane GPSR w pliku eMAG: producent i osoba odpowiedzialna w UE (zapis w ustawieniach kanału – tylko admin)
+function GpsrPanel({ channel, canEdit, onChanged }) {
+  const [v, setV] = useState(() => gpsrOf(channel))
+  const [msg, setMsg] = useState(null)
+  const [busy, setBusy] = useState(false)
+  async function save() {
+    setBusy(true); setMsg(null)
+    const { error } = await supabase.from('channels').update({ limits: { ...(channel.limits || {}), gpsr: Object.fromEntries(GPSR_FIELDS.map(([k]) => [k, String(v[k] || '').trim()])) } }).eq('id', channel.id)
+    setBusy(false); setMsg(error ? { type: 'error', text: plError(error.message) } : { type: 'ok', text: 'Zapisano dane GPSR.' })
+    if (!error) onChanged()
+  }
+  return (
+    <details className="panel">
+      <summary><strong>Dane GPSR</strong> <span className="muted small">– producent i osoba odpowiedzialna w UE: {gpsrOf(channel).manufacturer_name}</span></summary>
+      <p className="muted small">Trafiają do kolumn „Gyártó adatai” i „EU felelős személy adatai” w pliku tworzenia produktów (create).{canEdit ? '' : ' Zmienić je może administrator.'}</p>
+      <div className="filter-grid">
+        {GPSR_FIELDS.map(([k, l]) => <label key={k}>{l}<input value={v[k] || ''} disabled={!canEdit} type={/email/.test(k) ? 'email' : 'text'} onChange={e => setV({ ...v, [k]: e.target.value })} /></label>)}
+      </div>
+      {canEdit && <button className="btn" disabled={busy} onClick={save}>{busy ? 'Zapisywanie…' : 'Zapisz dane GPSR'}</button>}
+      {msg && <p className={msg.type} role="status">{msg.text}</p>}
+    </details>
+  )
+}
+
 export default function Emag({ profile }) {
   const canEdit = ['akceptujacy', 'admin'].includes(profile?.role)
   const [data, setData] = useState(null)
@@ -377,7 +401,7 @@ export default function Emag({ profile }) {
           const type = family?.type
           if (r) usedFamilies.add(r.id)
           const tt = data.titles.get(p.id)
-          const row = buildRow(fileType, { product: eanOf.has(p.id) ? { ...p, ean: eanOf.get(p.id) } : p, description: data.desc.get(p.id), title: tt?.status === 'zatwierdzony' ? tt.title : '', brand: data.channel.limits?.export_brand || data.brands.get(p.brand_id) || data.brands.get(f.brand_id) || '', values: data.saved.get(p.id)?.values || {}, family, template: structure })
+          const row = buildRow(fileType, { product: eanOf.has(p.id) ? { ...p, ean: eanOf.get(p.id) } : p, description: data.desc.get(p.id), title: tt?.status === 'zatwierdzony' ? tt.title : '', brand: data.channel.limits?.export_brand || data.brands.get(p.brand_id) || data.brands.get(f.brand_id) || '', values: data.saved.get(p.id)?.values || {}, family, template: structure, gpsr: gpsrOf(data.channel) })
           const probs = rowProblems(fileType, row, structure.characteristics)
           if (tt?.status !== 'zatwierdzony' && row.name) probs.push(`tytuł z opisu – brak zatwierdzonego tytułu w module Tytuły eMAG`)
           if (!row.ean && fileType === 'create') probs.push('brak EAN w Baselinkerze')
@@ -409,7 +433,7 @@ export default function Emag({ profile }) {
   return (
     <section className="page wide">
       <h1>Eksport do eMAG</h1>
-      <p className="muted lead">Charakterystyki produktów (z danych Baselinkera dopasowanych do słowników eMAG i uzupełnione przez AI), rodziny eMAG i generowanie pliku importu. Do pliku trafiają zaakceptowane opisy HU i zatwierdzone tytuły (ekran Tytuły eMAG); marka w pliku: {data.channel.limits?.export_brand || 'z Baselinkera'}. Stan: 1 szt., czas wysyłki: 2 dni, gwarancja z Baselinkera; ceny, VAT i dane GPSR na razie puste.</p>
+      <p className="muted lead">Charakterystyki produktów (z danych Baselinkera dopasowanych do słowników eMAG i uzupełnione przez AI), rodziny eMAG i generowanie pliku importu. Do pliku trafiają zaakceptowane opisy HU i zatwierdzone tytuły (ekran Tytuły eMAG); marka w pliku: {data.channel.limits?.export_brand || 'z Baselinkera'}. Stan: 1 szt., czas wysyłki: 2 dni, gwarancja z Baselinkera; dane GPSR (producent i osoba odpowiedzialna w UE) – z ustawień poniżej; ceny i VAT na razie puste.</p>
       <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>
         <button role="tab" aria-selected={tab === 'eksport'} className={tab === 'eksport' ? 'tab on' : 'tab'} onClick={() => setTab('eksport')}>Eksport</button>
         <button role="tab" aria-selected={tab === 'spis'} className={tab === 'spis' ? 'tab on' : 'tab'} onClick={() => setTab('spis')}>Spis rodzin eMAG <span className="count">{(data.registry || []).filter(r => r.status !== 'nieaktualna').length}</span></button>
@@ -418,6 +442,7 @@ export default function Emag({ profile }) {
       {syncMsg && <p className={syncMsg.type} role="status">{syncMsg.text}</p>}
       {tab === 'spis' ? <FamilyRegistry registry={data.registry || []} families={data.families} skuOf={data.skuOf} onChanged={load} /> : (<>
       <TemplatesPanel channel={data.channel} templates={data.templates} canEdit={canEdit} onChanged={load} />
+      <GpsrPanel channel={data.channel} canEdit={profile?.role === 'admin'} onChanged={load} />
 
       {base && (<>
         <div className="panel">
