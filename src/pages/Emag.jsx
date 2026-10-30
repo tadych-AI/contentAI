@@ -5,6 +5,7 @@ import { runJob } from '../jobs.js'
 import { parseTemplate, fillTemplate, FILE_TYPE_LABEL } from '../emagXlsx.js'
 import { presetCharacteristics, chooseFamilyType, characteristicIssues, buildRow, rowProblems, NUMERIC_COLUMNS, matchAllowed, planEmagFamilies, registryChanges, SPLIT_LABEL } from '../emag.js'
 import { factsFor } from '../gen.js'
+import { importProducts } from '../catalog.js'
 import DrainLoader from '../components/DrainLoader.jsx'
 
 const PCOLS = 'id, sku, ean, name, family_id, brand_id, bl_category_id, baselinker_product_id, features, extra_fields, images, weight, description_pl'
@@ -229,6 +230,7 @@ export default function Emag({ profile }) {
   const [job, setJob] = useState(null)
   const [fileType, setFileType] = useState('create')
   const [includeIncomplete, setIncludeIncomplete] = useState(false)
+  const [freshEan, setFreshEan] = useState(true)   // przed eksportem pobierz aktualne EAN z Baselinkera
   const [tab, setTab] = useState('eksport')
   const [syncMsg, setSyncMsg] = useState(null)
   const lastSync = useRef('')
@@ -351,6 +353,19 @@ export default function Emag({ profile }) {
       const { data: full, error } = await supabase.from('emag_templates').select('file_b64, structure').eq('id', tpl.id).single()
       if (error) throw error
       const structure = { ...full.structure, characteristics: full.structure.characteristics || chars }
+      // EAN: aktualne wartości z Baselinkera (ponowny import zaznaczonych produktów), w razie błędu – EAN zapisany w aplikacji
+      const eanOf = new Map(), eanNotes = []
+      if (freshEan) {
+        const prods = data.families.filter(x => sel.has(x.id)).flatMap(f => data.members.get(f.id) || [])
+        const blIds = [...new Set(prods.map(p => p.baselinker_product_id).filter(Boolean))]
+        try {
+          await importProducts(blIds, { onProgress: t => setJob({ busy: true, progress: `Pobieranie aktualnych EAN z Baselinkera – ${t}…` }) })
+          const fresh = await fetchAll('products', 'id, ean', x => x.in('id', prods.map(p => p.id)))
+          for (const f of fresh) eanOf.set(f.id, f.ean || '')
+          for (const p of prods) if (eanOf.has(p.id) && (eanOf.get(p.id) || '') !== (p.ean || '')) eanNotes.push(`${p.sku}: EAN ${p.ean || '(brak)'} → ${eanOf.get(p.id) || '(brak)'}`)
+        } catch (e) { eanNotes.push(`Nie udało się pobrać EAN z Baselinkera (${plError(e.message)}) – użyto EAN zapisanych w aplikacji`) }
+        setJob({ busy: true, progress: 'Przygotowanie pliku…' })
+      }
       const rows = [], skipped = [], famIds = [], usedFamilies = new Set()
       for (const f of data.families.filter(x => sel.has(x.id))) {
         const m = data.members.get(f.id) || []
@@ -362,11 +377,12 @@ export default function Emag({ profile }) {
           const type = family?.type
           if (r) usedFamilies.add(r.id)
           const tt = data.titles.get(p.id)
-          const row = buildRow(fileType, { product: p, description: data.desc.get(p.id), title: tt?.status === 'zatwierdzony' ? tt.title : '', brand: data.channel.limits?.export_brand || data.brands.get(p.brand_id) || data.brands.get(f.brand_id) || '', values: data.saved.get(p.id)?.values || {}, family, template: structure })
+          const row = buildRow(fileType, { product: eanOf.has(p.id) ? { ...p, ean: eanOf.get(p.id) } : p, description: data.desc.get(p.id), title: tt?.status === 'zatwierdzony' ? tt.title : '', brand: data.channel.limits?.export_brand || data.brands.get(p.brand_id) || data.brands.get(f.brand_id) || '', values: data.saved.get(p.id)?.values || {}, family, template: structure })
           const probs = rowProblems(fileType, row, structure.characteristics)
           if (tt?.status !== 'zatwierdzony' && row.name) probs.push(`tytuł z opisu – brak zatwierdzonego tytułu w module Tytuły eMAG`)
+          if (!row.ean && fileType === 'create') probs.push('brak EAN w Baselinkerze')
           if (m.length > 1 && !type) probs.push(`rodzina bez typu eMAG – produkt trafi jako osobny${plans.get(f.id)?.why ? ` (${plans.get(f.id).why})` : !plans.get(f.id) ? ' (uzupełnij charakterystyki wszystkich wariantów)' : ''}`)
-          if (probs.length && !includeIncomplete && probs.some(x => !x.startsWith('rodzina bez typu') && !x.startsWith('tytuł z opisu'))) skipped.push({ sku: p.sku, problems: probs })
+          if (probs.length && !includeIncomplete && probs.some(x => !x.startsWith('rodzina bez typu') && !x.startsWith('tytuł z opisu') && !x.startsWith('brak EAN'))) skipped.push({ sku: p.sku, problems: probs })
           else { rows.push(row); if (probs.length) skipped.push({ sku: p.sku, problems: probs, included: true }) }
         }
       }
@@ -380,7 +396,8 @@ export default function Emag({ profile }) {
         for (const id of usedFamilies) { const r = (data.registry || []).find(x => x.id === id); await supabase.from('emag_families').update({ status: 'wyslana', last_exported_at: now, ...(r?.first_exported_at ? {} : { first_exported_at: now }) }).eq('id', id) }
       }
       await supabase.from('emag_exports').insert({ channel_id: data.channel.id, emag_template_id: tpl.id, file_type: fileType, category_id: tpl.category_id, family_ids: famIds, product_count: rows.length, skipped, created_by: session.user.id })
-      setJob({ ok: `Wygenerowano plik z ${plN(rows.length, 'produktem', 'produktami', 'produktami')}. Wgraj go w eMAG Marketplace → Import XLS.`, skipped })
+      const eanChanged = eanNotes.filter(x => x.includes('→')).length
+      setJob({ ok: `Wygenerowano plik z ${plN(rows.length, 'produktem', 'produktami', 'produktami')}.${freshEan ? (eanNotes.some(x => x.startsWith('Nie udało')) ? ' EAN z aplikacji (Baselinker niedostępny).' : ` EAN aktualne z Baselinkera${eanChanged ? ` – zmieniono ${eanChanged}` : ''}.`) : ''} Wgraj go w eMAG Marketplace → Import XLS.`, skipped: [...(eanNotes.length ? [{ sku: 'EAN', problems: eanNotes, included: true }] : []), ...skipped] })
       load()
     } catch (e) { setJob({ error: plError(e.message) }) }
   }
@@ -458,6 +475,7 @@ export default function Emag({ profile }) {
               <button className="btn ghost" onClick={fillCharacteristics}>Uzupełnij charakterystyki (BL + AI)</button>
               <select value={fileType} onChange={e => setFileType(e.target.value)} aria-label="Rodzaj pliku">{['create', 'update', 'family'].filter(t => data.templates.some(x => String(x.category_id) === catId && x.file_type === t)).map(t => <option key={t} value={t}>{FILE_TYPE_LABEL[t]}</option>)}</select>
               <label className="check small"><input type="checkbox" checked={includeIncomplete} onChange={e => setIncludeIncomplete(e.target.checked)} /> także niekompletne</label>
+              <label className="check small" title="Przed wygenerowaniem pliku aplikacja pobierze z Baselinkera aktualne dane zaznaczonych produktów (w tym EAN)"><input type="checkbox" checked={freshEan} onChange={e => setFreshEan(e.target.checked)} /> aktualne EAN z BL</label>
               <button className="btn" onClick={exportFile}>Generuj plik eMAG</button>
             </span>
           )}
