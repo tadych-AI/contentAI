@@ -113,6 +113,27 @@ export default function Products({ profile }) {
       setFam(null); setSel(new Set()); load()
     } catch (e) { setFam(f => ({ ...f, busy: false, error: plError(e.message) })) }
   }
+  // usuwanie produktów z aplikacji (w BL zostają) – razem z opisami, faktami produktu, tytułami i characteristics
+  async function removeProducts() {
+    const items = data.products.filter(p => sel.has(p.id))
+    const famNames = [...new Set(items.filter(p => p.family_id).map(p => data.families.get(p.family_id)?.name).filter(Boolean))]
+    const list = items.slice(0, 8).map(p => `• ${p.sku} – ${p.name}`).join('\n') + (items.length > 8 ? `\n… i ${items.length - 8} więcej` : '')
+    if (!window.confirm(`Usunąć z aplikacji ${plN(items.length, 'produkt', 'produkty', 'produktów')}?\n\n${list}\n\nRazem z nimi zostaną usunięte ich opisy (także zaakceptowane), fakty produktu, tytuły i characteristics eMAG.${famNames.length ? `\nRodziny: ${famNames.slice(0, 5).join(', ')}${famNames.length > 5 ? '…' : ''} – pusta rodzina zostanie usunięta, a gdy usuniesz wariant wiodący, wiodącym zostanie inny produkt.` : ''}\n\nW Baselinkerze produkty zostają – możesz je później zaimportować ponownie. Tej operacji nie można cofnąć.`)) return
+    setFam(null); setFamMsg({ type: 'muted', text: 'Usuwanie…' })
+    let sum = { deleted: 0, descriptions: 0, families_removed: 0 }
+    try {
+      for (let i = 0; i < items.length; i += 200) {
+        const { data: r, error } = await supabase.rpc('delete_products', { p_ids: items.slice(i, i + 200).map(p => p.id) })
+        if (error) throw error
+        for (const k of Object.keys(sum)) sum[k] += r?.[k] || 0
+      }
+      setFamMsg({ type: 'ok', text: `Usunięto ${plN(sum.deleted, 'produkt', 'produkty', 'produktów')}${sum.descriptions ? `, ${plN(sum.descriptions, 'opis', 'opisy', 'opisów')}` : ''}${sum.families_removed ? ` i ${plN(sum.families_removed, 'pustą rodzinę', 'puste rodziny', 'pustych rodzin')}` : ''}.` })
+      setSel(new Set()); setOpen(null); load()
+    } catch (e) {
+      setFamMsg({ type: 'error', text: /delete_products|function/i.test(e.message) && !/Część produktów|Brak uprawnień/.test(e.message) ? 'Uruchom w Supabase migrację 015_usuwanie_produktow.sql, aby usuwać produkty.' : plError(String(e.message).replace(/^.*?ERROR:\s*/, '')) })
+      if (sum.deleted) load()
+    }
+  }
   function openFamily(mode) {
     const items = data.products.filter(p => sel.has(p.id))
     setFamMsg(null)
@@ -200,6 +221,7 @@ export default function Products({ profile }) {
                 <strong>Zaznaczono {plN(items.length, 'produkt', 'produkty', 'produktów')}</strong>
                 <button className="btn" onClick={() => openFamily('new')}>Utwórz rodzinę z zaznaczonych</button>
                 {data.families.size > 0 && <button className="btn ghost" onClick={() => openFamily('add')}>Dodaj do istniejącej rodziny</button>}
+                <button className="btn ghost danger" onClick={removeProducts}>Usuń z aplikacji</button>
                 <button className="link-dark" onClick={() => { setSel(new Set()); setFam(null) }}>Odznacz</button>
               </div>
               {fam && (
